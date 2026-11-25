@@ -1,12 +1,15 @@
 import {
   KEYBOARD_KEYS_65,
   KEYBOARD_KEYS_108,
+  THAI_LEGEND_FONTS,
   getKeyboardLayout,
+  kedmaneeLegend,
   type KeySpec,
   type KeyboardLayoutId,
   formatBubbleForVk,
   resolveKeyByVk,
 } from './keyboardLayout';
+import { getActiveLocale } from './i18n';
 import { catAudio } from './audio';
 import { resolveCustomSkin, type CatSkinConfig, type ResolvedSkin } from './catSkins';
 import { DaFeiYuRenderer, type DaFeiYuLayout } from './dafeiyuRenderer';
@@ -3734,7 +3737,31 @@ export class KuroCatEngine {
       }
 
       const legend = key.id === 'space' ? (isTailSelected ? '␣' : '') : key.id === 'esc' ? 'Esc' : key.label;
-      if (legend) {
+      const thaiLegend = getActiveLocale() === 'th-TH' ? kedmaneeLegend(key.id) : '';
+      if (legend && thaiLegend) {
+        // Two legends: Latin smaller top-left, Thai Kedmanee bottom-right.
+        const latinSize = is108 ? 4.4 : 4.9;
+        const thaiSize = is108 ? 5.6 : 6.2;
+        targetCtx.save();
+        targetCtx.translate(x + w * 0.5, y + (h - 0.9) * 0.5);
+        if (isCatFacing) {
+          targetCtx.rotate(Math.PI);
+        }
+        targetCtx.fillStyle = press > 0.14 || isTailSelected
+          ? '#111214'
+          : key.accent === 'orange'
+            ? '#ffffff'
+            : '#2c2f36';
+        targetCtx.font = `700 ${latinSize}px "Segoe UI", system-ui, sans-serif`;
+        targetCtx.textAlign = 'left';
+        targetCtx.textBaseline = 'top';
+        targetCtx.fillText(legend, -w * 0.5 + 1.3, -(h - 0.9) * 0.5 + 0.8);
+        targetCtx.font = `600 ${thaiSize}px ${THAI_LEGEND_FONTS}`;
+        targetCtx.textAlign = 'right';
+        targetCtx.textBaseline = 'alphabetic';
+        targetCtx.fillText(thaiLegend, w * 0.5 - 1.1, (h - 0.9) * 0.5 - 2.0);
+        targetCtx.restore();
+      } else if (legend) {
         const isWideWord = legend.length >= 3;
         const fontSize = is108
           ? isWideWord
@@ -3778,7 +3805,7 @@ export class KuroCatEngine {
       const padMargin = 20;
       const cacheLogW = Math.ceil(botHalfW * 2 + padMargin * 2);
       const cacheLogH = Math.ceil(this.kbHeight + padMargin * 2);
-      const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}`;
+      const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}|${getActiveLocale() === 'th-TH' ? 'th' : ''}`;
 
       if (!this.kbCacheCanvas || this.kbCacheKey !== nextKey) {
         if (!this.kbCacheCanvas) this.kbCacheCanvas = document.createElement('canvas');

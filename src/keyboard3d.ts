@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import {
+  THAI_LEGEND_FONTS,
   getKeyboardLayout,
+  kedmaneeLegend,
   resolveKeyByVk,
   type KeyboardLayoutId,
   type KeySpec,
 } from './keyboardLayout';
 import type { KeyboardOrientation } from './catEngine';
+import { getActiveLocale } from './i18n';
 
 export class Spring1D {
   public x: number;
@@ -276,6 +279,51 @@ interface KeyAtlasData {
 }
 
 const keyAtlasCache = new Map<string, KeyAtlasData>();
+
+/** Second (Thai Kedmanee) keycap legend, only while the UI language is th-TH. */
+function secondLegendFor(spec: KeySpec): string {
+  return getActiveLocale() === 'th-TH' ? kedmaneeLegend(spec.id) : '';
+}
+
+/** Atlas tile key shared by the atlas builder and the per-key UV lookup. */
+function keycapTileKey(spec: KeySpec, second: string): string {
+  const accent = spec.accent === 'orange' ? 'orange' : spec.accent === 'mod' ? 'mod' : 'base';
+  const label = spec.id === 'space' ? '' : spec.id === 'esc' ? 'Esc' : spec.label;
+  return second ? `${label}|${second}|${accent}` : `${label}|${accent}`;
+}
+
+/**
+ * Draws `text` with the Thai legend font, right-aligned at `x1` on a shared baseline near
+ * the bottom of the [x0, x1] x [y0, y1] box (so "-" stays mid-height like a printed
+ * keycap). The measured ink box, marks included, is kept inside the box: the text is
+ * nudged up when a below-mark would cross `y1`, and shrunk when it is still too big.
+ */
+function drawFittedLegend(
+  g: CanvasRenderingContext2D,
+  text: string,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  maxSize: number,
+): void {
+  let size = maxSize;
+  for (;;) {
+    g.font = `600 ${size}px ${THAI_LEGEND_FONTS}`;
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    const m = g.measureText(text);
+    let baseline = y1 - size * 0.22;
+    baseline -= Math.max(0, baseline + m.actualBoundingBoxDescent - y1);
+    const fitsWidth = m.actualBoundingBoxLeft + m.actualBoundingBoxRight <= x1 - x0;
+    const fitsHeight = baseline - m.actualBoundingBoxAscent >= y0;
+    if ((fitsWidth && fitsHeight) || size <= 12) {
+      g.fillText(text, x1 - m.actualBoundingBoxRight, baseline);
+      return;
+    }
+    size -= 2;
+  }
+}
 const miscTextureCache = new Map<string, THREE.CanvasTexture>();
 
 /**
@@ -288,7 +336,8 @@ function getKeycapAtlas(
   keys: readonly KeySpec[],
   rotated180: boolean,
 ): KeyAtlasData {
-  const cacheKey = `${layoutId}|${rotated180 ? 1 : 0}`;
+  const thai = getActiveLocale() === 'th-TH';
+  const cacheKey = `${layoutId}|${rotated180 ? 1 : 0}${thai ? '|th' : ''}`;
   const cached = keyAtlasCache.get(cacheKey);
   if (cached) return cached;
 
@@ -300,16 +349,22 @@ function getKeycapAtlas(
     }
   }
 
-  const unique: Array<{ key: string; label: string; accent: 'base' | 'mod' | 'orange' }> = [];
+  const unique: Array<{
+    key: string;
+    label: string;
+    second: string;
+    accent: 'base' | 'mod' | 'orange';
+  }> = [];
   const seen = new Set<string>();
   for (const spec of keys) {
     const accent: 'base' | 'mod' | 'orange' =
       spec.accent === 'orange' ? 'orange' : spec.accent === 'mod' ? 'mod' : 'base';
     const label = spec.id === 'space' ? '' : spec.id === 'esc' ? 'Esc' : spec.label;
-    const tk = `${label}|${accent}`;
+    const second = secondLegendFor(spec);
+    const tk = keycapTileKey(spec, second);
     if (!seen.has(tk)) {
       seen.add(tk);
-      unique.push({ key: tk, label, accent });
+      unique.push({ key: tk, label, second, accent });
     }
   }
 
@@ -335,7 +390,7 @@ function getKeycapAtlas(
   const PAD = 7.5;
 
   const paintTile = (
-    item: { key: string; label: string; accent: 'base' | 'mod' | 'orange' },
+    item: { key: string; label: string; second: string; accent: 'base' | 'mod' | 'orange' },
     col: number,
     row: number,
   ) => {
@@ -353,7 +408,19 @@ function getKeycapAtlas(
     g.fillStyle = grad;
     g.fillRect(ox, oy, CELL, CELL);
 
-    if (item.label) {
+    if (item.label && item.second) {
+      // Two legends: Latin smaller top-left, Thai bottom-right (fitted to its measured box).
+      g.save();
+      g.translate(ox + CELL * 0.5, oy + CELL * 0.5);
+      if (rotated180) g.rotate(Math.PI);
+      g.fillStyle = item.accent === 'orange' ? '#ffffff' : '#2b2d34';
+      g.font = `700 ${item.label.length >= 2 ? 21 : 26}px "Segoe UI", system-ui, sans-serif`;
+      g.textAlign = 'left';
+      g.textBaseline = 'top';
+      g.fillText(item.label, -CELL * 0.5 + PAD + 4.5, -CELL * 0.5 + PAD + 3);
+      drawFittedLegend(g, item.second, -4.5, -3, CELL * 0.5 - PAD - 3, CELL * 0.5 - PAD - 3, 38);
+      g.restore();
+    } else if (item.label) {
       g.save();
       g.translate(ox + CELL * 0.5, oy + CELL * 0.5);
       if (rotated180) g.rotate(Math.PI);
@@ -559,6 +626,7 @@ export class KeyboardAndMouse3D {
 
   private layoutId: KeyboardLayoutId = '65';
   private orientation: KeyboardOrientation = 'cat';
+  private boardThai = false;
   private hitColor = new THREE.Color('#d4f044');
   private rightBtnColor = new THREE.Color('#ff7b3b');
   private boardH = 0.115;
@@ -801,9 +869,16 @@ export class KeyboardAndMouse3D {
 
   public rebuildBoard(layoutId: KeyboardLayoutId, orientation: KeyboardOrientation): void {
     // Skip redundant rebuild if nothing changed and meshes already exist
-    if (this.sideInstanced && this.layoutId === layoutId && this.orientation === orientation) {
+    const thai = getActiveLocale() === 'th-TH';
+    if (
+      this.sideInstanced &&
+      this.layoutId === layoutId &&
+      this.orientation === orientation &&
+      this.boardThai === thai
+    ) {
       return;
     }
+    this.boardThai = thai;
 
     this.layoutId = layoutId;
     this.orientation = orientation;
@@ -918,8 +993,8 @@ export class KeyboardAndMouse3D {
             : this.sideColorBase,
       );
 
-      const legendText = spec.id === 'space' ? '' : spec.id === 'esc' ? 'Esc' : spec.label;
-      const rect = atlas.rects.get(`${legendText}|${accent}`) ?? [0, 0, 0.1, 0.1];
+      const rect =
+        atlas.rects.get(keycapTileKey(spec, secondLegendFor(spec))) ?? [0, 0, 0.1, 0.1];
       uvRects[i * 4] = rect[0];
       uvRects[i * 4 + 1] = rect[1];
       uvRects[i * 4 + 2] = rect[2];

@@ -12,7 +12,7 @@ body {
   height: 100%;
   overflow: hidden;
   background: transparent !important;
-  font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, -apple-system, sans-serif;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "Leelawadee UI", "Leelawadee", "Noto Sans Thai", "Thonburi", Tahoma, system-ui, -apple-system, sans-serif;
 }
 
 /* On Windows 7/8 ULW mode, the cat renders via native 256-level UpdateLayeredWindow while

@@ -7,13 +7,14 @@ use std::sync::OnceLock;
 pub const DEFAULT_LOCALE: &str = "en-US";
 
 #[allow(dead_code)]
-pub const SHIPPED_LOCALES: [&str; 5] = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR"];
+pub const SHIPPED_LOCALES: [&str; 6] = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "th-TH"];
 
 const RAW_ZH_CN: &str = include_str!("../../locales/zh-CN.json");
 const RAW_ZH_TW: &str = include_str!("../../locales/zh-TW.json");
 const RAW_EN_US: &str = include_str!("../../locales/en-US.json");
 const RAW_JA_JP: &str = include_str!("../../locales/ja-JP.json");
 const RAW_KO_KR: &str = include_str!("../../locales/ko-KR.json");
+const RAW_TH_TH: &str = include_str!("../../locales/th-TH.json");
 
 struct Catalogs {
     maps: BTreeMap<&'static str, BTreeMap<String, String>>,
@@ -57,6 +58,7 @@ fn catalogs() -> &'static Catalogs {
         maps.insert("en-US", parse_catalog(RAW_EN_US));
         maps.insert("ja-JP", parse_catalog(RAW_JA_JP));
         maps.insert("ko-KR", parse_catalog(RAW_KO_KR));
+        maps.insert("th-TH", parse_catalog(RAW_TH_TH));
         Catalogs { maps }
     })
 }
@@ -67,7 +69,7 @@ fn is_simplified_chinese(normalized: &str) -> bool {
         .any(|sub| matches!(sub, "hant" | "tw" | "hk" | "mo"))
 }
 
-/// Resolve any BCP-47 / POSIX locale tag onto one of KuroCat's 5 shipped catalogs.
+/// Resolve any BCP-47 / POSIX locale tag onto one of KuroCat's shipped catalogs.
 pub fn resolve_locale_tag(raw: &str) -> &'static str {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -93,6 +95,7 @@ pub fn resolve_locale_tag(raw: &str) -> &'static str {
         }
         "ja" => "ja-JP",
         "ko" => "ko-KR",
+        "th" => "th-TH",
         "en" => "en-US",
         _ => DEFAULT_LOCALE,
     }
@@ -221,6 +224,8 @@ mod tests {
         assert_eq!(resolve_locale_tag("zh-Hant-MO"), "zh-TW");
         assert_eq!(resolve_locale_tag("ja_JP.UTF-8"), "ja-JP");
         assert_eq!(resolve_locale_tag("ko"), "ko-KR");
+        assert_eq!(resolve_locale_tag("th-TH"), "th-TH");
+        assert_eq!(resolve_locale_tag("th_TH.UTF-8"), "th-TH");
         assert_eq!(resolve_locale_tag("en-GB"), "en-US");
         assert_eq!(resolve_locale_tag("de-DE"), "en-US");
     }

@@ -255,6 +255,37 @@ for (const layoutId of ['65', '108'] as const) {
   }
 }
 
+/**
+ * Unshifted Thai Kedmanee character per key id, shown as a second keycap legend when the
+ * UI language is Thai (th-TH). Kept apart from the layout tables; numpad, function, arrow
+ * and modifier keys have none.
+ */
+export const KEDMANEE: Readonly<Record<string, string>> = {
+  grave: '_', '1': 'ๅ', '2': '/', '3': '-', '4': 'ภ', '5': 'ถ', '6': 'ุ', '7': 'ึ',
+  '8': 'ค', '9': 'ต', '0': 'จ', minus: 'ข', equal: 'ช',
+  q: 'ๆ', w: 'ไ', e: 'ำ', r: 'พ', t: 'ะ', y: 'ั', u: 'ี', i: 'ร', o: 'น', p: 'ย',
+  lb: 'บ', rb: 'ล', bslash: 'ฃ',
+  a: 'ฟ', s: 'ห', d: 'ก', f: 'ด', g: 'เ', h: '้', j: '่', k: 'า', l: 'ส', semi: 'ว', quote: 'ง',
+  z: 'ผ', x: 'ป', c: 'แ', v: 'อ', b: 'ิ', n: 'ื', m: 'ท', comma: 'ม', dot: 'ใ', slash: 'ฝ',
+};
+
+/** Thai combining marks (above/below vowels and tone marks) on the Kedmanee keys. */
+const THAI_COMBINING = /^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]$/;
+
+/**
+ * The Thai legend to draw for a key, or '' when it has none. Combining marks are put on a
+ * dotted circle (U+25CC) so they are visible on their own and never clipped.
+ */
+export function kedmaneeLegend(keyId: string): string {
+  const ch = KEDMANEE[keyId];
+  if (!ch) return '';
+  return THAI_COMBINING.test(ch) ? `\u25CC${ch}` : ch;
+}
+
+/** Canvas font stack for Thai legends (Thai fonts first so ◌ and its mark share one font). */
+export const THAI_LEGEND_FONTS =
+  '"Leelawadee UI", "Leelawadee", "Noto Sans Thai", "Thonburi", Tahoma, "Segoe UI", system-ui, sans-serif';
+
 export function getKeyboardLayout(layoutId: KeyboardLayoutId): KeyboardLayoutDef {
   return KEYBOARD_LAYOUTS[layoutId] ?? KEYBOARD_LAYOUTS['65'];
 }

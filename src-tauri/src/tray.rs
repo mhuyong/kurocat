@@ -31,6 +31,7 @@ struct TrayCheckHandles {
     lang_en_us: CheckMenuItem<Wry>,
     lang_ja_jp: CheckMenuItem<Wry>,
     lang_ko_kr: CheckMenuItem<Wry>,
+    lang_th_th: CheckMenuItem<Wry>,
 }
 
 fn active_handles() -> &'static Mutex<Option<TrayCheckHandles>> {
@@ -68,6 +69,7 @@ fn sync_checkmarks(s: &AppSettings) {
             let _ = h.lang_en_us.set_checked(s.language == "en-US");
             let _ = h.lang_ja_jp.set_checked(s.language == "ja-JP");
             let _ = h.lang_ko_kr.set_checked(s.language == "ko-KR");
+            let _ = h.lang_th_th.set_checked(s.language == "th-TH");
         }
     }
 }
@@ -270,6 +272,7 @@ fn build_tray_menu(
     let lang_en_us = CheckMenuItem::with_id(app, "lang_en-US", "English", true, initial.language == "en-US", None::<&str>)?;
     let lang_ja_jp = CheckMenuItem::with_id(app, "lang_ja-JP", "日本語", true, initial.language == "ja-JP", None::<&str>)?;
     let lang_ko_kr = CheckMenuItem::with_id(app, "lang_ko-KR", "한국어", true, initial.language == "ko-KR", None::<&str>)?;
+    let lang_th_th = CheckMenuItem::with_id(app, "lang_th-TH", "ไทย", true, initial.language == "th-TH", None::<&str>)?;
     let lang_menu = Submenu::with_items(
         app,
         t(lang, "tray.lang_menu"),
@@ -282,6 +285,7 @@ fn build_tray_menu(
             &lang_en_us,
             &lang_ja_jp,
             &lang_ko_kr,
+            &lang_th_th,
         ],
     )?;
 
@@ -465,6 +469,7 @@ fn build_tray_menu(
         lang_en_us,
         lang_ja_jp,
         lang_ko_kr,
+        lang_th_th,
     };
 
     Ok((menu, handles))
@@ -797,6 +802,7 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
                 "lang_en-US" => apply_language_and_save(app, "en-US"),
                 "lang_ja-JP" => apply_language_and_save(app, "ja-JP"),
                 "lang_ko-KR" => apply_language_and_save(app, "ko-KR"),
+                "lang_th-TH" => apply_language_and_save(app, "th-TH"),
                 "desktop_shortcut" => {
                     let _ = crate::config::create_desktop_shortcut();
                 }

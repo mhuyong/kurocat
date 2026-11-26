@@ -158,8 +158,10 @@ pub fn normalize_tail_key_ids(raw: &[String]) -> Vec<String> {
     out
 }
 
+/// `#[serde(default)]` on the struct: a settings.json missing any field (an older version's file,
+/// or one edited by hand) keeps every field it has and takes `Default` for the rest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     pub x: Option<i32>,
     pub y: Option<i32>,
@@ -281,7 +283,11 @@ pub fn config_path() -> PathBuf {
 pub fn load_settings() -> AppSettings {
     let path = config_path();
     if let Ok(content) = fs::read_to_string(&path) {
-        if let Ok(mut parsed) = serde_json::from_str::<AppSettings>(&content) {
+        let result = serde_json::from_str::<AppSettings>(&content);
+        if result.is_err() {
+            backup_unparseable(&path, &content);
+        }
+        if let Ok(mut parsed) = result {
             parsed.scale = parsed.scale.clamp(0.20, 1.50);
             parsed.tail_key_mode = normalize_tail_key_mode(&parsed.tail_key_mode);
             parsed.tail_key_ids = normalize_tail_key_ids(&parsed.tail_key_ids);
@@ -299,6 +305,16 @@ pub fn load_settings() -> AppSettings {
     crate::i18n::set_ui_language(&defaults.language);
     crate::ai_typing::set_enabled(defaults.show_ai_typing);
     defaults
+}
+
+/// A settings file that cannot be parsed is about to be replaced by defaults on the next save:
+/// keep a copy first (`settings.json.bak-unparseable`), once per distinct content.
+fn backup_unparseable(path: &std::path::Path, content: &str) {
+    let backup = path.with_extension("json.bak-unparseable");
+    if fs::read_to_string(&backup).map(|old| old == content).unwrap_or(false) {
+        return;
+    }
+    let _ = fs::write(&backup, content);
 }
 
 pub fn save_settings(settings: &AppSettings) {
@@ -565,5 +581,53 @@ mod tests {
         assert_eq!(parsed.tail_key_mode, "smart");
         assert_eq!(parsed.tail_key_ids, default_tail_key_ids());
         assert!(!parsed.show_ai_typing, "showAiTyping must default to off");
+    }
+
+    /// One missing field must not reset the others (this used to fall back to all defaults).
+    #[test]
+    fn missing_one_field_keeps_the_other_values() {
+        let json = r#"{
+            "x": 10, "y": 20, "scale": 0.7, "alwaysOnTop": false,
+            "showKeyBubbles": false, "soundEnabled": false, "autostart": true,
+            "mcpPort": 31000, "showAiTyping": true, "language": "th-TH", "renderMode": "2d"
+        }"#; // clickThroughLocked is missing
+        let p: AppSettings = serde_json::from_str(json).expect("must parse");
+        assert!(!p.click_through_locked, "the missing field takes its default");
+        assert_eq!((p.x, p.y), (Some(10), Some(20)));
+        assert_eq!(p.scale, 0.7);
+        assert!(!p.always_on_top && !p.show_key_bubbles && !p.sound_enabled && p.autostart);
+        assert_eq!(p.mcp_port, 31000);
+        assert!(p.show_ai_typing);
+        assert_eq!(p.language, "th-TH");
+        assert_eq!(p.render_mode, "2d");
+    }
+
+    /// An old-version file (without the fields this PR added) loads with those defaulted and
+    /// everything it does hold kept; an empty object is all defaults.
+    #[test]
+    fn old_version_settings_keep_values_and_default_new_fields() {
+        let old = r#"{"scale": 0.5, "mcpPort": 28000, "mcpEnabled": false, "catBreed": "orange"}"#;
+        let p: AppSettings = serde_json::from_str(old).expect("must parse");
+        assert_eq!(p.scale, 0.5);
+        assert_eq!(p.mcp_port, 28000);
+        assert!(!p.mcp_enabled);
+        assert_eq!(p.cat_breed, "orange");
+        assert!(!p.show_ai_typing, "field added by this PR: default off");
+        assert!(p.always_on_top && p.show_key_bubbles && p.sound_enabled);
+        let d: AppSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(d.mcp_port, 27420);
+    }
+
+    #[test]
+    fn unparseable_settings_are_backed_up_not_lost() {
+        let dir = std::env::temp_dir().join(format!("kuro-settings-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("settings.json");
+        backup_unparseable(&path, "{ not json");
+        let backup = dir.join("settings.json.bak-unparseable");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{ not json");
+        backup_unparseable(&path, "{ other broken");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{ other broken");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -147,6 +147,8 @@ mod win_impl {
         }
     }
 
+    /// Opt-in debug log only (agent-debug.flag). Note: `class=` is the foreground app's window class,
+    /// so it names the app in front while the flag is on; nothing typed is ever logged.
     /// Short description of what the poll sees, for the opt-in debug log: no foreground window,
     /// KuroCat itself in front (language kept), or the foreground window class + thread layout.
     pub fn describe_foreground(own_pid: u32) -> String {

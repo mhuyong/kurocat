@@ -171,7 +171,6 @@
     "err_curl": "Could not run curl to check for updates: {err}",
     "err_connect_generic": "Could not connect to the update server. Check your network or proxy",
     "err_check": "Update check failed: {err}",
-    "err_parse": "Could not read the latest release info: {err}",
     "err_temp_file": "Could not create the download file: {err}",
     "err_write": "Could not write the installer: {err}",
     "err_incomplete": "The download is incomplete",

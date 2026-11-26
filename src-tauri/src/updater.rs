@@ -3,9 +3,29 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
 
-const QIANYI_API_LATEST: &str = "https://qianyi.one/kurocat/releases/latest.json";
-const REPO_API_LATEST: &str = "https://api.github.com/repos/qianyiai/kurocat/releases/latest";
-const REPO_RELEASES_PAGE: &str = "https://github.com/qianyiai/kurocat/releases/latest";
+/// fork build: updates come from this repo only (no mirror, no upstream repo).
+pub const UPDATE_REPO: &str = "mhuyong/kurocat";
+
+/// GitHub "latest release" API of `UPDATE_REPO`. Debug builds only: `KUROCAT_DEBUG_UPDATE_URL`
+/// may point it at a local stub for testing; the override is compiled out of release builds.
+fn latest_release_api_url() -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(url) = std::env::var("KUROCAT_DEBUG_UPDATE_URL") {
+        if !url.trim().is_empty() {
+            return url.trim().to_string();
+        }
+    }
+    format!("https://api.github.com/repos/{}/releases/latest", UPDATE_REPO)
+}
+
+/// The fork's releases list (fallback when no release link is known).
+pub fn releases_list_url() -> String {
+    format!("https://github.com/{}/releases", UPDATE_REPO)
+}
+
+fn releases_page_url() -> String {
+    format!("https://github.com/{}/releases/latest", UPDATE_REPO)
+}
 
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -75,8 +95,21 @@ pub fn parse_semver(raw: &str) -> (u64, u64, u64) {
     (major, minor, patch)
 }
 
+/// Fork build number from an optional "-th.<n>" suffix ("5.1.2-th.3" -> 3). No suffix, any
+/// other text after the dash, or a malformed number counts as 0.
+pub fn parse_fork_build(raw: &str) -> u64 {
+    let clean = raw.trim().trim_start_matches(['v', 'V']);
+    clean
+        .split_once('-')
+        .and_then(|(_, suffix)| suffix.strip_prefix("th."))
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+/// Orders by x.y.z first, then by the fork build n: 5.1.2-th.2 > 5.1.2-th.1 > 5.1.2, and
+/// 5.1.3-th.1 > 5.1.2-th.9.
 pub fn is_newer_version(latest: &str, current: &str) -> bool {
-    parse_semver(latest) > parse_semver(current)
+    (parse_semver(latest), parse_fork_build(latest)) > (parse_semver(current), parse_fork_build(current))
 }
 
 fn extract_sha256(digest: &Option<String>) -> Option<String> {
@@ -606,15 +639,9 @@ fn fetch_json_from_url(url: &str, accept: Option<&str>, timeout_ms: i32) -> Resu
 
 #[cfg(windows)]
 fn fetch_latest_release_json() -> Result<String, String> {
-    // Primary: fast domestic CDN mirror (no proxy needed, zero GitHub API rate limit)
-    if let Ok(text) = fetch_json_from_url(QIANYI_API_LATEST, Some("Accept: application/json\r\n"), 8_000) {
-        if serde_json::from_str::<GhRelease>(&text).is_ok() {
-            return Ok(text);
-        }
-    }
-    // Fallback: official GitHub Releases API
+    // fork build: the fork's GitHub Releases API only.
     fetch_json_from_url(
-        REPO_API_LATEST,
+        &latest_release_api_url(),
         Some("Accept: application/vnd.github+json\r\n"),
         20_000,
     )
@@ -663,29 +690,50 @@ fn fetch_json_from_url(url: &str, accept: &str, connect_secs: &str, max_secs: &s
 
 #[cfg(not(windows))]
 fn fetch_latest_release_json() -> Result<String, String> {
-    // Primary: fast domestic CDN mirror (no proxy needed, zero GitHub API rate limit)
-    if let Ok(text) = fetch_json_from_url(QIANYI_API_LATEST, "Accept: application/json", "5", "9") {
-        if serde_json::from_str::<GhRelease>(&text).is_ok() {
-            return Ok(text);
-        }
+    // fork build: the fork's GitHub Releases API only.
+    fetch_json_from_url(&latest_release_api_url(), "Accept: application/vnd.github+json", "10", "20")
+}
+
+/// "Up to date" answer used when there is nothing to offer.
+fn no_update_info() -> UpdateInfo {
+    UpdateInfo {
+        current_version: CURRENT_VERSION.to_string(),
+        latest_version: CURRENT_VERSION.to_string(),
+        has_update: false,
+        release_url: releases_page_url(),
+        asset_name: None,
+        download_url: None,
+        asset_sha256: None,
+        asset_size: None,
+        install_kind: detect_install_kind().to_string(),
+        notes_summary: String::new(),
     }
-    // Fallback: official GitHub Releases API
-    fetch_json_from_url(REPO_API_LATEST, "Accept: application/vnd.github+json", "10", "20")
 }
 
 pub fn check_latest_update() -> Result<UpdateInfo, String> {
-    let raw_json = fetch_latest_release_json()?;
-    let rel: GhRelease = serde_json::from_str(&raw_json)
-        .map_err(|e| crate::i18n::uif("updater.err_parse", &[("err", e.to_string())]))?;
+    // fork build: no release yet (404), an unreadable answer or a network error all mean
+    // "no update", silently (no toast, no error); a manual check shows "up to date".
+    let rel = match fetch_latest_release_json()
+        .ok()
+        .and_then(|raw| serde_json::from_str::<GhRelease>(&raw).ok())
+    {
+        Some(rel) => rel,
+        None => {
+            let info = no_update_info();
+            store_cached_update_info(&info);
+            return Ok(info);
+        }
+    };
 
     let latest_clean = rel
         .tag_name
         .trim()
         .trim_start_matches(['v', 'V'])
         .to_string();
-    let has_update = is_newer_version(&latest_clean, CURRENT_VERSION);
     let install_kind = detect_install_kind();
     let asset = select_asset(&rel.assets, install_kind);
+    // No matching installer asset = no update.
+    let has_update = is_newer_version(&latest_clean, CURRENT_VERSION) && asset.is_some();
 
     let info = UpdateInfo {
         current_version: CURRENT_VERSION.to_string(),
@@ -693,7 +741,7 @@ pub fn check_latest_update() -> Result<UpdateInfo, String> {
         has_update,
         release_url: rel
             .html_url
-            .unwrap_or_else(|| REPO_RELEASES_PAGE.to_string()),
+            .unwrap_or_else(releases_page_url),
         asset_name: asset.map(|a| a.name.clone()),
         download_url: asset.map(|a| a.browser_download_url.clone()),
         asset_sha256: asset.and_then(|a| extract_sha256(&a.digest)),
@@ -1166,6 +1214,43 @@ mod tests {
         assert!(is_newer_version("5.0.0", "4.9.9"));
         assert!(!is_newer_version("4.4.0", "4.4.0"));
         assert!(!is_newer_version("v4.3.9", "4.4.0"));
+    }
+
+    #[test]
+    fn fork_build_suffix_orders_after_xyz() {
+        assert!(is_newer_version("5.1.2-th.2", "5.1.2-th.1"));
+        assert!(is_newer_version("5.1.2-th.1", "5.1.2"));
+        assert!(is_newer_version("v5.1.3-th.1", "5.1.2-th.9"));
+        assert!(!is_newer_version("5.1.2-th.9", "5.1.3-th.1"));
+        assert!(!is_newer_version("5.1.2-th.1", "5.1.2-th.1"));
+        // An upstream release of the same x.y.z (no suffix) is not newer than our fork build.
+        assert!(!is_newer_version("5.1.2", "5.1.2-th.1"));
+    }
+
+    #[test]
+    fn malformed_or_foreign_suffix_counts_as_zero() {
+        assert_eq!(parse_fork_build("5.1.2-th.x"), 0);
+        assert_eq!(parse_fork_build("5.1.2-th."), 0);
+        assert_eq!(parse_fork_build("5.1.2-th.-1"), 0);
+        assert_eq!(parse_fork_build("5.1.2-beta.3"), 0);
+        assert_eq!(parse_fork_build("5.1.2"), 0);
+        assert_eq!(parse_fork_build("v5.1.2-th.12"), 12);
+        assert!(!is_newer_version("5.1.2-th.x", "5.1.2"));
+        assert!(!is_newer_version("5.1.2-beta", "5.1.2"));
+        assert_eq!(parse_semver("5.1.2-th.3"), (5, 1, 2));
+    }
+
+    #[test]
+    fn update_source_is_the_fork_only() {
+        assert_eq!(UPDATE_REPO, "mhuyong/kurocat");
+        if std::env::var("KUROCAT_DEBUG_UPDATE_URL").is_err() {
+            assert_eq!(
+                latest_release_api_url(),
+                "https://api.github.com/repos/mhuyong/kurocat/releases/latest"
+            );
+        }
+        assert_eq!(releases_page_url(), "https://github.com/mhuyong/kurocat/releases/latest");
+        assert_eq!(releases_list_url(), "https://github.com/mhuyong/kurocat/releases");
     }
 
     #[test]

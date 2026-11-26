@@ -1077,7 +1077,8 @@ async function bootstrap(): Promise<void> {
 
   btnToastOpenEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/kurocat/releases/latest';
+    // Empty = no release link known; the backend then opens the fork's releases page (UPDATE_REPO).
+    const url = latestUpdateInfo?.releaseUrl || '';
     void invoke('open_release_page', { url });
   });
 

@@ -1084,7 +1084,9 @@ async fn install_update(app: AppHandle, info: updater::UpdateInfo) -> Result<(),
 
 #[tauri::command]
 fn open_release_page(url: String) {
-    updater::open_url_in_browser(&url);
+    // No release link known yet: the fork's releases page (built from updater::UPDATE_REPO).
+    let target = if url.trim().is_empty() { updater::releases_list_url() } else { url };
+    updater::open_url_in_browser(&target);
 }
 
 #[tauri::command]

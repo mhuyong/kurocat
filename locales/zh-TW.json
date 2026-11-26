@@ -171,7 +171,6 @@
     "err_curl": "無法呼叫 curl 檢查更新：{err}",
     "err_connect_generic": "連線更新伺服器失敗，請檢查網路或代理",
     "err_check": "檢查更新失敗：{err}",
-    "err_parse": "解析最新版本資訊失敗：{err}",
     "err_temp_file": "無法建立下載暫存檔：{err}",
     "err_write": "寫入安裝檔失敗：{err}",
     "err_incomplete": "下載的檔案不完整",

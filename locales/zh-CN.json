@@ -171,7 +171,6 @@
     "err_curl": "无法调用 curl 检查更新: {err}",
     "err_connect_generic": "连接更新服务器失败，请检查网络或代理",
     "err_check": "检查更新失败: {err}",
-    "err_parse": "解析最新版本信息失败: {err}",
     "err_temp_file": "无法创建下载临时文件: {err}",
     "err_write": "写入安装包失败: {err}",
     "err_incomplete": "下载文件不完整",

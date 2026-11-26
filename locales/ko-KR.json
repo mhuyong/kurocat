@@ -171,7 +171,6 @@
     "err_curl": "curl을 실행해 업데이트를 확인하지 못했습니다: {err}",
     "err_connect_generic": "업데이트 서버에 연결하지 못했습니다. 네트워크나 프록시를 확인하세요",
     "err_check": "업데이트 확인 실패: {err}",
-    "err_parse": "최신 버전 정보를 해석하지 못했습니다: {err}",
     "err_temp_file": "다운로드 임시 파일을 만들지 못했습니다: {err}",
     "err_write": "설치 파일을 쓰지 못했습니다: {err}",
     "err_incomplete": "다운로드한 파일이 불완전합니다",

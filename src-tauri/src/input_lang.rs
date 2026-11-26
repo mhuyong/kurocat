@@ -38,6 +38,36 @@ fn store(lang: &str) -> bool {
     true
 }
 
+/// Debounce for the foreground poll: a language is accepted when the first poll sees it (nothing
+/// accepted yet) or when two polls in a row see it. A held switch hotkey that cycles layouts, or
+/// a window change that shows another thread's layout for one poll, then does not flap the
+/// keyboard picture; one real switch costs one extra poll (250 ms).
+#[derive(Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct LangDebounce {
+    accepted: Option<String>,
+    candidate: Option<String>,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl LangDebounce {
+    /// Feeds one poll result; returns the language to announce when it is newly accepted.
+    pub fn feed(&mut self, lang: &str) -> Option<String> {
+        if self.accepted.as_deref() == Some(lang) {
+            self.candidate = None;
+            return None;
+        }
+        let first = self.accepted.is_none();
+        if first || self.candidate.as_deref() == Some(lang) {
+            self.accepted = Some(lang.to_string());
+            self.candidate = None;
+            return Some(lang.to_string());
+        }
+        self.candidate = Some(lang.to_string());
+        None
+    }
+}
+
 /// ISO 639-1 code for a Windows LANGID (low word of an HKL). Thai (primary 0x1E) is always "th".
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn code_for_langid(langid: u16) -> String {
@@ -82,6 +112,7 @@ pub fn start_input_lang_watcher(app: AppHandle, paused_guard: Arc<AtomicBool>) {
     std::thread::spawn(move || {
         let own_pid = std::process::id();
         let mut announced = false;
+        let mut debounce = LangDebounce::default();
         // Opt-in debug log (agent-debug.flag): one line per change of what the poll sees.
         let mut last_seen = String::new();
         loop {
@@ -96,7 +127,8 @@ pub fn start_input_lang_watcher(app: AppHandle, paused_guard: Arc<AtomicBool>) {
             if !paused {
                 if let Some(langid) = win_impl::foreground_langid(own_pid) {
                     let lang = code_for_langid(langid);
-                    if store(&lang) || !announced {
+                    let settled = debounce.feed(&lang);
+                    if settled.is_some() && (store(&lang) || !announced) {
                         crate::ai_typing::debug_log("input.lang", &format!("lang={lang} langid=0x{langid:04x}"));
                         announced = true;
                         let json = payload_json(&lang);
@@ -204,6 +236,24 @@ mod tests {
         assert_eq!(code_for_langid(0x0411), "ja");
         assert_eq!(code_for_langid(0x0804), "zh");
         assert_eq!(code_for_langid(0x0412), "ko");
+    }
+
+    #[test]
+    fn debounce_needs_two_polls_except_the_first() {
+        let mut d = LangDebounce::default();
+        assert_eq!(d.feed("th").as_deref(), Some("th"), "first value at once");
+        assert_eq!(d.feed("th"), None);
+        // One poll of another language (window change / transient thread) is not a switch.
+        assert_eq!(d.feed("en"), None);
+        assert_eq!(d.feed("th"), None);
+        // A held hotkey alternating every poll never settles.
+        for i in 0..10 {
+            assert_eq!(d.feed(if i % 2 == 0 { "en" } else { "th" }), None, "poll {i}");
+        }
+        // One real switch: accepted on the second poll that sees it.
+        assert_eq!(d.feed("en"), None);
+        assert_eq!(d.feed("en").as_deref(), Some("en"));
+        assert_eq!(d.feed("en"), None);
     }
 
     #[test]

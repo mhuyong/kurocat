@@ -82,11 +82,22 @@ pub fn start_input_lang_watcher(app: AppHandle, paused_guard: Arc<AtomicBool>) {
     std::thread::spawn(move || {
         let own_pid = std::process::id();
         let mut announced = false;
+        // Opt-in debug log (agent-debug.flag): one line per change of what the poll sees.
+        let mut last_seen = String::new();
         loop {
-            if !paused_guard.load(Ordering::Relaxed) {
+            let paused = paused_guard.load(Ordering::Relaxed);
+            if crate::ai_typing::debug_enabled() {
+                let seen = if paused { "paused".to_string() } else { win_impl::describe_foreground(own_pid) };
+                if seen != last_seen {
+                    crate::ai_typing::debug_log("input.poll", &seen);
+                    last_seen = seen;
+                }
+            }
+            if !paused {
                 if let Some(langid) = win_impl::foreground_langid(own_pid) {
                     let lang = code_for_langid(langid);
                     if store(&lang) || !announced {
+                        crate::ai_typing::debug_log("input.lang", &format!("lang={lang} langid=0x{langid:04x}"));
                         announced = true;
                         let json = payload_json(&lang);
                         let _ = app.emit("kuro-input-lang", serde_json::json!({ "lang": lang }));
@@ -133,6 +144,28 @@ mod win_impl {
             } else {
                 Some(langid)
             }
+        }
+    }
+
+    /// Short description of what the poll sees, for the opt-in debug log: no foreground window,
+    /// KuroCat itself in front (language kept), or the foreground window class + thread layout.
+    pub fn describe_foreground(own_pid: u32) -> String {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.is_null() {
+                return "no_foreground".into();
+            }
+            let mut pid: u32 = 0;
+            let tid = GetWindowThreadProcessId(hwnd, &mut pid);
+            if pid == own_pid {
+                return "own_window_keeps_last".into();
+            }
+            let mut buf = [0u16; 64];
+            let n = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32).max(0) as usize;
+            let class = String::from_utf16_lossy(&buf[..n]);
+            let hkl = GetKeyboardLayout(tid) as usize;
+            format!("class={class} thread_layout=0x{:04x}", hkl & 0xffff)
         }
     }
 

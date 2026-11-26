@@ -12,6 +12,7 @@ import {
   type KeyboardLayoutId,
 } from './keyboardLayout';
 import { GRAVE_BUBBLE_HOLD_MS, followsInputLang, keyBubbleLabel } from './inputLang';
+import type { KeyEventOptions } from './agentCompanion';
 import type { KeyboardOrientation, TailKeyMode } from './catEngine';
 import { DEFAULT_TAIL_KEY_IDS } from './catEngine';
 import { catAudio } from './audio';
@@ -2105,7 +2106,7 @@ export class KuroCatEngine3D {
     this.wakeAt = -100;
     this.isCross = false;
     const targetId = this.desk.getKeyById('enter') ? 'enter' : 'space';
-    this.triggerTailKey(targetId, targetId === 'enter' ? 'Enter' : 'Space');
+    this.triggerTailKey(targetId, null);
     window.setTimeout(() => {
       if (this.tailTap.keyId === targetId) this.tailTap.down = false;
     }, 180);
@@ -2131,9 +2132,9 @@ export class KuroCatEngine3D {
     this.wakeRendering();
   }
 
-  public onKeyDown(vk: number, repeat = false): void {
+  public onKeyDown(vk: number, repeat = false, opts?: KeyEventOptions): void {
     if (this.privacyMode) {
-      if (!repeat) {
+      if (!repeat && !opts?.synthetic) {
         this.sSquash.kick(0.25);
         this.wakeRendering();
       }
@@ -2158,9 +2159,15 @@ export class KuroCatEngine3D {
           this.tailKeyMode !== 'off' &&
           (this.desk.isRightEdgeTailKey(k.spec.id) ||
             (this.tailKeyMode === 'smart' && (k.spec.id === 'space' || k.spec.id === 'enter')));
-    const bubbleLabel = keyBubbleLabel(vk, k.spec) || k.spec.label || k.spec.id;
+    // AI keys (synthetic) move the paws and keycaps; they show a popup only with an explicit
+    // label (the character the AI typed) and never feed the ` ~ hold logic (popup vk 0).
+    const synthetic = opts?.synthetic === true;
+    const bubbleLabel = synthetic
+      ? opts?.bubble || null
+      : keyBubbleLabel(vk, k.spec) || k.spec.label || k.spec.id;
+    const bubbleVk = synthetic ? 0 : vk;
     if (useTail) {
-      this.triggerTailKey(k.spec.id, bubbleLabel, vk);
+      this.triggerTailKey(k.spec.id, bubbleLabel, bubbleVk);
       return;
     }
 
@@ -2186,8 +2193,8 @@ export class KuroCatEngine3D {
 
     this.sSquash.kick(0.32);
     this.sPitch.kick(0.75);
-    if (this.showKeyBubbles) {
-      this.spawnKeyPopup(k.spec.id, bubbleLabel, paw.side, vk);
+    if (this.showKeyBubbles && bubbleLabel !== null) {
+      this.spawnKeyPopup(k.spec.id, bubbleLabel, paw.side, bubbleVk);
     }
   }
 
@@ -2410,7 +2417,8 @@ export class KuroCatEngine3D {
     this.lastPoke = this.elapsed;
   }
 
-  private triggerTailKey(keyId: string, bubbleLabel: string, vk = 0): void {
+  /** `bubbleLabel` null: no popup (synthetic keys from the AI companion). */
+  private triggerTailKey(keyId: string, bubbleLabel: string | null, vk = 0): void {
     this.tailTap.keyId = keyId;
     this.tailTap.from = this.tailTap.reach;
     this.tailTap.t0 = this.elapsed;
@@ -2419,7 +2427,7 @@ export class KuroCatEngine3D {
     this.tailTap.landAt = this.elapsed;
     this.desk.setKeyDown(keyId, true);
     this.sSquash.kick(0.24);
-    if (this.showKeyBubbles) {
+    if (this.showKeyBubbles && bubbleLabel !== null) {
       this.spawnKeyPopup(keyId, bubbleLabel, 1, vk);
     }
     window.setTimeout(() => {

@@ -23,6 +23,7 @@ import {
   inputLangBubbleLabel,
   noteKeyForShift,
   onInputLangChange,
+  onAiLegendScriptChange,
   resetShift,
   setInputLang,
 } from './inputLang';
@@ -50,6 +51,7 @@ interface AppSettings {
   autostart: boolean;
   catBreed: string;
   mcpEnabled: boolean;
+  showAiTyping?: boolean;
   mcpPort: number;
   keyboardLayout: KeyboardLayoutId;
   keyboardOrientation: KeyboardOrientation;
@@ -150,6 +152,7 @@ let settings: AppSettings = {
   autostart: false,
   catBreed: 'black',
   mcpEnabled: true,
+  showAiTyping: false,
   mcpPort: 27420,
   keyboardLayout: '65',
   keyboardOrientation: 'cat',
@@ -210,6 +213,10 @@ const agentCompanion = new AgentCompanionController({
   getTarget: () => (active3d && engine3d ? engine3d : engine),
   is3DTarget: () => Boolean(active3d && engine3d),
   allowSound: () => settings.soundEnabled !== false,
+  allowTypedText: () => settings.showAiTyping === true,
+  debugLog: (stage, detail) => {
+    void invoke('agent_debug_log', { stage, detail }).catch(() => {});
+  },
 });
 
 window.addEventListener('resize', () => engine3d?.resize());
@@ -486,6 +493,7 @@ function syncMenuUI(): void {
   setCheck('chk-top', settings.alwaysOnTop);
   setCheck('chk-autostart', settings.autostart);
   setCheck('chk-mcp', settings.mcpEnabled);
+  setCheck('chk-ai-typing', settings.showAiTyping === true);
 
   if (!sliderDragging) {
     updateScaleSliderVisual(settings.scale);
@@ -765,6 +773,7 @@ async function applySettingsPatch(patch: Partial<AppSettings>): Promise<void> {
   }
   const seq = ++settingsPatchSeq;
   settings = { ...settings, ...patch };
+  agentCompanion.refreshTypedTextPermission();
   syncMenuUI();
   const updated = await invoke<AppSettings>('update_settings', { patch: settings });
   if (seq !== settingsPatchSeq) return;
@@ -1138,6 +1147,8 @@ async function bootstrap(): Promise<void> {
     const prevLock = lastKnownLockState;
     const prevRenderMode = settings.renderMode;
     settings = ev.payload;
+    // Tray, settings window or file change: "Show what the AI types" off stops at once.
+    agentCompanion.refreshTypedTextPermission();
     if (prevRenderMode === '2d' && settings.renderMode !== '2d') {
       webgl3dUnavailable = false;
     }
@@ -1211,6 +1222,11 @@ async function bootstrap(): Promise<void> {
     const label = inputLangBubbleLabel(lang);
     if (active3d && engine3d) engine3d.showInputLangBubble(label);
     else engine.showInputLangBubble(label);
+  });
+  // The AI's typing switches the legends by the script of its text; the same re-draw applies.
+  onAiLegendScriptChange(() => {
+    engine.refreshKeyLegends();
+    engine3d?.refreshKeyLegends();
   });
   await listen<{ lang: string }>('kuro-input-lang', (ev) => {
     setInputLang(ev.payload);
@@ -1499,6 +1515,9 @@ async function bootstrap(): Promise<void> {
         break;
       case 'toggle-mcp':
         void applySettingsPatch({ mcpEnabled: !settings.mcpEnabled });
+        break;
+      case 'toggle-ai-typing':
+        void applySettingsPatch({ showAiTyping: settings.showAiTyping !== true });
         break;
       case 'copy-mcp':
         void copyMcpConfig();

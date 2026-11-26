@@ -12,6 +12,7 @@ import {
   resolveKeyByVk,
 } from './keyboardLayout';
 import { keyBubbleLabel, thaiLegendMode } from './inputLang';
+import type { KeyEventOptions } from './agentCompanion';
 import { t } from './i18n';
 import { catAudio } from './audio';
 import { resolveCustomSkin, type CatSkinConfig, type ResolvedSkin } from './catSkins';
@@ -241,6 +242,8 @@ export class KuroCatEngine {
   private gameActive = false;
   private kbCacheCanvas: HTMLCanvasElement | null = null;
   private kbCacheKey = '';
+  /** The previous keyboard cache canvases (the other legend script), so a switch does not redraw. */
+  private kbCacheSpare = new Map<string, HTMLCanvasElement>();
   private lastActivityAt = 0;
   private lastTime = 0;
   private elapsed = 0;
@@ -969,6 +972,11 @@ export class KuroCatEngine {
       this.kbCacheCanvas = null;
       this.kbCacheKey = '';
     }
+    for (const c of this.kbCacheSpare.values()) {
+      c.width = 0;
+      c.height = 0;
+    }
+    this.kbCacheSpare.clear();
     this.canvas.width = 0;
     this.canvas.height = 0;
   }
@@ -1175,7 +1183,7 @@ export class KuroCatEngine {
   /** AI Companion trigger: playful single tail pat on Enter/Space. */
   public triggerTailPatDemo(): void {
     const vk = 0x0d;
-    this.onKeyDown(vk, false);
+    this.onKeyDown(vk, false, { synthetic: true });
     window.setTimeout(() => this.onKeyUp(vk), 170);
   }
 
@@ -1221,11 +1229,17 @@ export class KuroCatEngine {
 
   // ---- Input event handlers ----
 
-  public onKeyDown(vk: number, repeat: boolean): void {
+  public onKeyDown(vk: number, repeat: boolean, opts?: KeyEventOptions): void {
     if (this.privacyMode) {
-      if (!repeat) this.onPrivacyTyping();
+      if (!repeat && !opts?.synthetic) this.onPrivacyTyping();
       return;
     }
+    // AI keys (synthetic) move the paws and keycaps; they show a bubble only with an explicit
+    // label (the character the AI typed) and never feed the ` ~ hold logic (bubble vk 0).
+    const synthetic = opts?.synthetic === true;
+    const forcedLabel = synthetic ? opts?.bubble : undefined;
+    const showBubble = this.showKeyBubbles && (!synthetic || Boolean(forcedLabel));
+    const bubbleVk = synthetic ? 0 : vk;
     const now = performance.now();
     const spec = resolveKeyByVk(vk, this.keyboardLayout);
     if (!spec) return;
@@ -1283,10 +1297,10 @@ export class KuroCatEngine {
         this.shouldUseTailForKey(spec, rawKeyPt, dafeiyuMouseBusy, prevAnyKeyAt, now);
       const pt = dafeiyuUseTail ? this.getTailTargetPoint(spec) : rawKeyPt;
       this.dafeiyu.onKeyDown(vk, pt, dafeiyuLayout, repeat, dafeiyuUseTail);
-      if (this.showKeyBubbles) {
-        const label = keyBubbleLabel(vk, spec);
+      if (showBubble) {
+        const label = forcedLabel ?? keyBubbleLabel(vk, spec);
         if (label) {
-          this.spawnBubble(label, spec.id === 'space', pt.x, now, vk);
+          this.spawnBubble(label, spec.id === 'space', pt.x, now, bubbleVk);
         }
       }
       return;
@@ -1339,10 +1353,10 @@ export class KuroCatEngine {
           (0.85 + this.typingEnergy * 0.35);
       }
 
-      if (this.showKeyBubbles) {
-        const label = keyBubbleLabel(vk, spec);
+      if (showBubble) {
+        const label = forcedLabel ?? keyBubbleLabel(vk, spec);
         if (label) {
-          this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, vk);
+          this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, bubbleVk);
         }
       }
       return;
@@ -1437,10 +1451,10 @@ export class KuroCatEngine {
       other.lastActiveAt = now;
     }
 
-    if (this.showKeyBubbles) {
-      const label = keyBubbleLabel(vk, spec);
+    if (showBubble) {
+      const label = forcedLabel ?? keyBubbleLabel(vk, spec);
       if (label) {
-        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, vk);
+        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, bubbleVk);
       }
     }
   }
@@ -4032,6 +4046,29 @@ export class KuroCatEngine {
       const cacheLogW = Math.ceil(botHalfW * 2 + padMargin * 2);
       const cacheLogH = Math.ceil(this.kbHeight + padMargin * 2);
       const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}|${thaiLegendMode()}`;
+
+      if (this.kbCacheCanvas && this.kbCacheKey !== nextKey) {
+        // Park the current canvas and take the spare for the new key when there is one; at most
+        // two canvases are kept (the two legend scripts), anything older is released.
+        this.kbCacheSpare.set(this.kbCacheKey, this.kbCacheCanvas);
+        const spare = this.kbCacheSpare.get(nextKey);
+        if (spare) {
+          this.kbCacheSpare.delete(nextKey);
+          this.kbCacheCanvas = spare;
+          this.kbCacheKey = nextKey;
+        } else {
+          this.kbCacheCanvas = null;
+        }
+        while (this.kbCacheSpare.size > 1) {
+          const oldest = this.kbCacheSpare.keys().next().value as string;
+          const c = this.kbCacheSpare.get(oldest);
+          if (c) {
+            c.width = 0;
+            c.height = 0;
+          }
+          this.kbCacheSpare.delete(oldest);
+        }
+      }
 
       if (!this.kbCacheCanvas || this.kbCacheKey !== nextKey) {
         if (!this.kbCacheCanvas) this.kbCacheCanvas = document.createElement('canvas');

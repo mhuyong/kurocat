@@ -59,6 +59,8 @@
     "obs_hint": "免抠像",
     "obs_hide_pet": "仅 OBS 显示（隐藏桌面猫）",
     "toggle_mcp": "开启 MCP 扩展",
+    "toggle_ai_typing": "显示 AI 输入的内容",
+    "ai_typing_note": "会隐藏看起来像密码或密钥的文字，但可能有遗漏：共享屏幕时请关闭。",
     "copy_mcp": "复制 MCP 配置",
     "mcp_hint": "AI 捏猫",
     "copy_hooks": "发给 AI 自动配置",
@@ -115,6 +117,7 @@
     "always_on_top": "始终置顶显示",
     "autostart": "开机自动启动",
     "mcp_toggle": "开启 MCP 扩展服务",
+    "ai_typing": "显示 AI 输入的内容",
     "obs_menu": "OBS 透明直播源",
     "obs_toggle": "开启 OBS 透明直播源 (127.0.0.1:{port})",
     "obs_hide_pet": "仅 OBS 显示（隐藏桌面猫）",
@@ -229,7 +232,8 @@
     "connected": "已连接，待命中",
     "thinking_coding": "思考写代码中…",
     "tool_error": "工具执行出错",
-    "tool_failed": "工具执行失败"
+    "tool_failed": "工具执行失败",
+    "mcp_disabled": "KuroCat 设置中已关闭 MCP 服务。请在 KuroCat 的菜单或托盘中开启「{menu}」。"
   },
   "diag": {
     "title": "KuroCat 键盘监听诊断",

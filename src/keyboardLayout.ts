@@ -323,6 +323,62 @@ const CHAR_KEY_ID_BY_VK: ReadonlyMap<number, string> = (() => {
   return m;
 })();
 
+/** A key to press for one typed character, and the exact bubble text for it. */
+export interface TypedKey {
+  vk: number;
+  bubble: string;
+  /** Script of the character: 'th', 'latin', or null (space: keeps whatever is showing). */
+  script: 'th' | 'latin' | null;
+}
+
+/**
+ * Key for each character the AI may type: Latin letters, digits and punctuation by the US
+ * layout (shifted ones on their base key), Thai by the Kedmanee tables used in reverse, space
+ * on the space bar. The bubble is the character itself (Thai marks on a dotted circle).
+ */
+const TYPED_KEY_BY_CHAR: ReadonlyMap<string, TypedKey> = (() => {
+  const m = new Map<string, TypedKey>();
+  const put = (ch: string, vk: number, bubble = ch) => {
+    if (!m.has(ch)) {
+      // Only letters give a script. Digits, punctuation and space exist on both layouts and keep
+      // the layout of the run they are in.
+      const script = /[฀-๿]/.test(ch) ? 'th' : /[A-Za-z]/.test(ch) ? 'latin' : null;
+      m.set(ch, { vk, bubble, script });
+    }
+  };
+  put(' ', 0x20, '␣');
+  for (let c = 0; c < 26; c++) {
+    put(String.fromCharCode(0x61 + c), 0x41 + c);
+    put(String.fromCharCode(0x41 + c), 0x41 + c);
+  }
+  for (let d = 0; d <= 9; d++) put(String(d), 0x30 + d);
+  const usShifted = ')!@#$%^&*(';
+  for (let d = 0; d <= 9; d++) put(usShifted[d], 0x30 + d);
+  const punct: Array<[string, string, number]> = [
+    ['`', '~', 0xc0], ['-', '_', 0xbd], ['=', '+', 0xbb], ['[', '{', 0xdb], [']', '}', 0xdd],
+    ['\\', '|', 0xdc], [';', ':', 0xba], ["'", '"', 0xde], [',', '<', 0xbc], ['.', '>', 0xbe],
+    ['/', '?', 0xbf],
+  ];
+  for (const [base, shifted, vk] of punct) {
+    put(base, vk);
+    put(shifted, vk);
+  }
+  const vkById = new Map<string, number>();
+  for (const [vk, id] of CHAR_KEY_ID_BY_VK) vkById.set(id, vk);
+  for (const table of [KEDMANEE, KEDMANEE_SHIFTED]) {
+    for (const [id, ch] of Object.entries(table)) {
+      const vk = vkById.get(id);
+      if (vk !== undefined && /[฀-๿]/.test(ch)) put(ch, vk, onDottedCircle(ch));
+    }
+  }
+  return m;
+})();
+
+/** The key and bubble for one character the AI typed, or null when no key produces it. */
+export function keyForChar(ch: string): TypedKey | null {
+  return TYPED_KEY_BY_CHAR.get(ch) ?? null;
+}
+
 /** VK of the ` ~ key (on the 65% layout it lights the ESC keycap). */
 export const VK_GRAVE = 0xc0;
 

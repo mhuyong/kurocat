@@ -39,6 +39,10 @@ pub struct AgentCompanionEvent {
     pub sound: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttl_ms: Option<u64>,
+    /// "Show what the AI types": the filtered, trimmed text the pet types key by key
+    /// (see `ai_typing`). Never logged; never sent to the OBS overlay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed_text: Option<String>,
     #[serde(default)]
     pub ts: u64,
 }
@@ -218,6 +222,7 @@ pub fn parse_hook_payload(
                 auto_type: Some(false),
                 sound: explicit_sound,
                 ttl_ms: Some(explicit_ttl.unwrap_or(5_000)),
+                typed_text: None,
                 ts,
             });
         }
@@ -246,6 +251,7 @@ pub fn parse_hook_payload(
                 auto_type: Some(explicit_auto_type.unwrap_or(default_auto_type)),
                 sound: Some(explicit_sound.unwrap_or(default_sound)),
                 ttl_ms: Some(explicit_ttl.unwrap_or(default_ttl)),
+                typed_text: None,
                 ts,
             });
         }
@@ -264,6 +270,7 @@ pub fn parse_hook_payload(
                 auto_type: Some(false),
                 sound: Some(explicit_sound.unwrap_or(true)),
                 ttl_ms: Some(explicit_ttl.unwrap_or(6_500)),
+                typed_text: None,
                 ts,
             });
         }
@@ -291,6 +298,7 @@ pub fn parse_hook_payload(
                 auto_type: Some(false),
                 sound: Some(explicit_sound.unwrap_or(false)),
                 ttl_ms: Some(explicit_ttl.unwrap_or(5_000)),
+                typed_text: None,
                 ts,
             });
         }
@@ -328,6 +336,7 @@ pub fn parse_hook_payload(
             auto_type: Some(false),
             sound: Some(false),
             ttl_ms: Some(explicit_ttl.unwrap_or(3_200)),
+            typed_text: None,
             ts,
         }),
         "sessionend" | "session_end" => Some(AgentCompanionEvent {
@@ -340,6 +349,7 @@ pub fn parse_hook_payload(
             auto_type: Some(false),
             sound: Some(false),
             ttl_ms: Some(1_000),
+            typed_text: None,
             ts,
         }),
         "preinvocation" | "userpromptsubmit" | "beforesubmitprompt" => Some(AgentCompanionEvent {
@@ -352,6 +362,7 @@ pub fn parse_hook_payload(
             auto_type: Some(explicit_auto_type.unwrap_or(true)),
             sound: Some(false),
             ttl_ms: Some(explicit_ttl.unwrap_or(45_000)),
+            typed_text: None,
             ts,
         }),
         "pretooluse" | "posttooluse" | "postinvocation" | "beforeshellexecution"
@@ -367,10 +378,15 @@ pub fn parse_hook_payload(
                     auto_type: Some(false),
                     sound: Some(explicit_sound.unwrap_or(true)),
                     ttl_ms: Some(explicit_ttl.unwrap_or(8_000)),
+                    typed_text: None,
                     ts,
                 });
             }
             let (label, auto_type) = label_for_tool(tool_name);
+            let tool_input = raw
+                .get("tool_input")
+                .or_else(|| raw.get("toolInput"))
+                .or_else(|| raw.get("toolCall").and_then(|tc| tc.get("args")));
             Some(AgentCompanionEvent {
                 kind: "status".to_string(),
                 status: Some("working".to_string()),
@@ -381,6 +397,7 @@ pub fn parse_hook_payload(
                 auto_type: Some(explicit_auto_type.unwrap_or(auto_type)),
                 sound: Some(false),
                 ttl_ms: Some(explicit_ttl.unwrap_or(45_000)),
+                typed_text: crate::ai_typing::extract_typed_text(tool_name, tool_input),
                 ts,
             })
         }
@@ -394,6 +411,7 @@ pub fn parse_hook_payload(
             auto_type: Some(false),
             sound: Some(explicit_sound.unwrap_or(true)),
             ttl_ms: Some(explicit_ttl.unwrap_or(8_500)),
+            typed_text: None,
             ts,
         }),
         "permissionrequest" | "notification" => Some(AgentCompanionEvent {
@@ -406,6 +424,7 @@ pub fn parse_hook_payload(
             auto_type: Some(false),
             sound: Some(explicit_sound.unwrap_or(true)),
             ttl_ms: Some(explicit_ttl.unwrap_or(90_000)),
+            typed_text: None,
             ts,
         }),
         "stop" | "subagentstop" => {
@@ -420,6 +439,7 @@ pub fn parse_hook_payload(
                     auto_type: Some(false),
                     sound: Some(false),
                     ttl_ms: Some(1_000),
+                    typed_text: None,
                     ts,
                 });
             }
@@ -434,6 +454,7 @@ pub fn parse_hook_payload(
                     auto_type: Some(false),
                     sound: Some(explicit_sound.unwrap_or(true)),
                     ttl_ms: Some(explicit_ttl.unwrap_or(9_000)),
+                    typed_text: None,
                     ts,
                 });
             }
@@ -447,6 +468,7 @@ pub fn parse_hook_payload(
                 auto_type: Some(false),
                 sound: Some(explicit_sound.unwrap_or(true)),
                 ttl_ms: Some(explicit_ttl.unwrap_or(6_500)),
+                typed_text: None,
                 ts,
             })
         }
@@ -520,13 +542,33 @@ pub fn run_hook_cli(args: &[String]) {
         serde_json::from_str(&pos).unwrap_or_else(|_| json!({}))
     } else if event_hint.is_none() && !std::io::stdin().is_terminal() {
         let mut buf = Vec::new();
-        let _ = std::io::stdin().take(512 * 1024).read_to_end(&mut buf);
-        serde_json::from_slice(&buf).unwrap_or_else(|_| json!({}))
+        let _ = std::io::stdin().take(HOOK_BODY_MAX as u64).read_to_end(&mut buf);
+        parse_hook_body(&buf).unwrap_or_else(|| json!({}))
     } else {
         json!({})
     };
 
     let settings = load_settings();
+    if crate::ai_typing::debug_enabled() {
+        let ti = raw_payload.get("tool_input").or_else(|| raw_payload.get("toolInput"));
+        let tool = raw_payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+        crate::ai_typing::debug_log(
+            "hook.in",
+            &format!(
+                "event={} tool={} has_input={} mcp_enabled={} show_ai_typing={} why_no_text={}",
+                raw_payload
+                    .get("hook_event_name")
+                    .or_else(|| raw_payload.get("hookEventName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?"),
+                clean_short_text(tool, 36).unwrap_or_default(),
+                ti.is_some(),
+                settings.mcp_enabled,
+                settings.show_ai_typing,
+                crate::ai_typing::diagnose(tool, ti),
+            ),
+        );
+    }
     if settings.mcp_enabled {
         let port = port_override.unwrap_or(settings.mcp_port);
         if let Some(ev) = parse_hook_payload(
@@ -536,9 +578,23 @@ pub fn run_hook_cli(args: &[String]) {
             text_hint.as_deref(),
         ) {
             if let Ok(val) = serde_json::to_value(&ev) {
-                let _ = post_loopback_json(port, "/agent/event", &val);
+                let ok = post_loopback_json(port, "/agent/event", &val);
+                crate::ai_typing::debug_log(
+                    "hook.post",
+                    &format!(
+                        "port={} ok={} status={} typed_chars={}",
+                        port,
+                        ok,
+                        ev.status.as_deref().unwrap_or("-"),
+                        ev.typed_text.as_deref().map(|t| t.chars().count()).unwrap_or(0)
+                    ),
+                );
             }
+        } else {
+            crate::ai_typing::debug_log("hook.parse", "no_event");
         }
+    } else {
+        crate::ai_typing::debug_log("hook.skip", "mcp_disabled");
     }
 
     let mut out = std::io::stdout().lock();
@@ -1162,7 +1218,10 @@ pub fn run_stdio_mcp() {
                 let resp = json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": err_text("MCP server is disabled in KuroCat settings. Enable 'MCP 扩展' in KuroCat's menu or tray.")
+                    "result": err_text(&crate::i18n::uif(
+                        "agent.mcp_disabled",
+                        &[("menu", crate::i18n::ui("menu.toggle_mcp"))],
+                    ))
                 });
                 let _ = writeln!(out, "{}", resp);
                 let _ = out.flush();
@@ -1261,6 +1320,96 @@ fn read_chunked_body<R: BufRead>(reader: &mut R, max_bytes: usize) -> Result<Vec
             .map_err(|_| "io")?;
         let mut crlf = [0u8; 2];
         let _ = reader.read_exact(&mut crlf);
+    }
+}
+
+/// Hook bodies: at most this much is read, the rest is ignored (a Write payload can be huge).
+const HOOK_BODY_MAX: usize = 256 * 1024;
+/// Bytes past [`HOOK_BODY_MAX`] that are still drained so the client is not reset mid-send.
+const HOOK_BODY_DRAIN_MAX: u64 = 8 * 1024 * 1024;
+
+/// Reads at most [`HOOK_BODY_MAX`] bytes of a hook body and discards the rest.
+fn read_hook_body<R: BufRead>(reader: &mut R, content_length: usize, is_chunked: bool) -> Vec<u8> {
+    let mut out = Vec::new();
+    if is_chunked {
+        loop {
+            let mut size_line = String::new();
+            if reader.read_line(&mut size_line).unwrap_or(0) == 0 {
+                break;
+            }
+            let hex_part = size_line.split(';').next().unwrap_or("").trim();
+            let Ok(chunk_len) = usize::from_str_radix(hex_part, 16) else {
+                break;
+            };
+            if chunk_len == 0 {
+                break;
+            }
+            let keep = chunk_len.min(HOOK_BODY_MAX.saturating_sub(out.len()));
+            let start = out.len();
+            out.resize(start + keep, 0);
+            if reader.read_exact(&mut out[start..]).is_err() {
+                out.truncate(start);
+                break;
+            }
+            let rest = (chunk_len - keep) as u64;
+            if rest > 0 {
+                let _ = std::io::copy(&mut reader.by_ref().take(rest), &mut std::io::sink());
+            }
+            let mut crlf = [0u8; 2];
+            let _ = reader.read_exact(&mut crlf);
+            if out.len() >= HOOK_BODY_MAX {
+                break;
+            }
+        }
+        return out;
+    }
+    let keep = content_length.min(HOOK_BODY_MAX);
+    out.resize(keep, 0);
+    if keep > 0 && reader.read_exact(&mut out).is_err() {
+        out.clear();
+        return out;
+    }
+    let rest = (content_length - keep) as u64;
+    if rest > 0 {
+        let _ = std::io::copy(
+            &mut reader.by_ref().take(rest.min(HOOK_BODY_DRAIN_MAX)),
+            &mut std::io::sink(),
+        );
+    }
+    out
+}
+
+/// Parses a hook body. A truncated or malformed body still yields the event name, tool name and
+/// status found in it (no tool input), so it gives the normal status event. None: nothing usable.
+pub fn parse_hook_body(buf: &[u8]) -> Option<Value> {
+    // A UTF-8 byte order mark (PowerShell / .NET pipes add one) is not valid JSON: without
+    // this strip the tool input was lost and only the plain status event came through.
+    let buf = buf.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(buf);
+    if buf.iter().all(|b| b.is_ascii_whitespace()) {
+        return Some(json!({}));
+    }
+    if let Ok(v) = serde_json::from_slice::<Value>(buf) {
+        return Some(v);
+    }
+    static KEYS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = KEYS.get_or_init(|| {
+        regex::Regex::new(
+            r#""(hook_event_name|hookEventName|tool_name|toolName|status|event|source)"\s*:\s*"([^"\\]{1,64})""#,
+        )
+        .expect("hook key regex")
+    });
+    let text = String::from_utf8_lossy(buf);
+    let mut obj = serde_json::Map::new();
+    for cap in re.captures_iter(&text) {
+        let key = cap[1].to_string();
+        if !obj.contains_key(&key) {
+            obj.insert(key, Value::String(cap[2].to_string()));
+        }
+    }
+    if obj.is_empty() {
+        None
+    } else {
+        Some(Value::Object(obj))
     }
 }
 
@@ -1376,30 +1525,11 @@ fn handle_http_conn(
     }
 
     if method == "POST" && (path == "/hook" || path == "/agent/event") {
-        let buf = match read_http_body(&mut reader, content_length, is_chunked, 512 * 1024) {
-            Ok(b) => b,
-            Err("too_large") => {
-                write_http_response(
-                    &mut stream,
-                    "413 Payload Too Large",
-                    "application/json",
-                    r#"{"error":"Payload too large"}"#,
-                );
-                return;
-            }
-            Err(_) => return,
-        };
-        let parsed: Value = if buf.is_empty() {
-            json!({})
-        } else {
-            match serde_json::from_slice(&buf) {
-                Ok(v) => v,
-                Err(e) => {
-                    let body = json!({ "ok": false, "error": format!("Invalid JSON: {}", e) }).to_string();
-                    write_http_response(&mut stream, "400 Bad Request", "application/json; charset=utf-8", &body);
-                    return;
-                }
-            }
+        let buf = read_hook_body(&mut reader, content_length, is_chunked);
+        let Some(parsed) = parse_hook_body(&buf) else {
+            let body = json!({ "ok": false, "error": "Invalid JSON" }).to_string();
+            write_http_response(&mut stream, "400 Bad Request", "application/json; charset=utf-8", &body);
+            return;
         };
 
         let mut source_q: Option<String> = None;
@@ -1436,6 +1566,11 @@ fn handle_http_conn(
             })
         };
 
+        // The reply never echoes the typed text.
+        let dispatched = dispatched.map(|mut ev| {
+            ev.typed_text = None;
+            ev
+        });
         let body = json!({
             "ok": true,
             "dispatched": dispatched.is_some(),
@@ -1507,6 +1642,19 @@ fn handle_http_conn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A hook body with a UTF-8 BOM (what a PowerShell/.NET pipe sends) still parses, so the
+    /// tool input (and with it the Thai or English text) is not lost.
+    #[test]
+    fn hook_body_with_utf8_bom_keeps_tool_input() {
+        let body = r#"{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"content":"สวัสดี"}}"#;
+        let mut with_bom = vec![0xEF, 0xBB, 0xBF];
+        with_bom.extend_from_slice(body.as_bytes());
+        for buf in [body.as_bytes().to_vec(), with_bom] {
+            let v = parse_hook_body(&buf).unwrap();
+            assert_eq!(v["tool_input"]["content"], "สวัสดี");
+        }
+    }
 
     #[test]
     fn parses_antigravity_lifecycle_hooks() {

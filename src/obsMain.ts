@@ -67,6 +67,8 @@ const obsAgentCompanion = new AgentCompanionController({
   getTarget: () => (active3d && engine3d ? engine3d : engine),
   is3DTarget: () => Boolean(active3d && engine3d),
   allowSound: () => false,
+  // A broadcast surface: never the AI's real text (Rust strips it too), only quiet typing.
+  allowTypedText: () => false,
 });
 
 // Mute audio inside OBS Browser Source so purring never double-plays on stream

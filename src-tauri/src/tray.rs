@@ -23,6 +23,7 @@ struct TrayCheckHandles {
     obs_toggle: CheckMenuItem<Wry>,
     obs_hide_pet: CheckMenuItem<Wry>,
     mcp_toggle: CheckMenuItem<Wry>,
+    ai_typing: CheckMenuItem<Wry>,
     fps_60: CheckMenuItem<Wry>,
     fps_30: CheckMenuItem<Wry>,
     lang_auto: CheckMenuItem<Wry>,
@@ -61,6 +62,7 @@ pub fn sync_checkmarks(s: &AppSettings) {
             let _ = h.obs_toggle.set_checked(s.obs_enabled);
             let _ = h.obs_hide_pet.set_checked(s.obs_enabled && s.obs_hide_pet);
             let _ = h.mcp_toggle.set_checked(s.mcp_enabled);
+            let _ = h.ai_typing.set_checked(s.show_ai_typing);
             let _ = h.fps_30.set_checked(s.fps_cap == 30);
             let _ = h.fps_60.set_checked(s.fps_cap != 30);
             let _ = h.lang_auto.set_checked(s.language == "auto");
@@ -160,6 +162,14 @@ fn build_tray_menu(
         t(lang, "tray.mcp_toggle"),
         true,
         initial.mcp_enabled,
+        None::<&str>,
+    )?;
+    let ai_typing = CheckMenuItem::with_id(
+        app,
+        "ai_typing",
+        t(lang, "tray.ai_typing"),
+        true,
+        initial.show_ai_typing,
         None::<&str>,
     )?;
 
@@ -386,6 +396,7 @@ fn build_tray_menu(
             &autostart,
             &obs_menu,
             &mcp_toggle,
+            &ai_typing,
             &check_update,
             &sep2,
             &quit,
@@ -416,6 +427,7 @@ fn build_tray_menu(
             &autostart,
             &obs_menu,
             &mcp_toggle,
+            &ai_typing,
             &check_update,
             &sep2,
             &quit,
@@ -444,6 +456,7 @@ fn build_tray_menu(
             &autostart,
             &obs_menu,
             &mcp_toggle,
+            &ai_typing,
             &check_update,
             &sep2,
             &quit,
@@ -461,6 +474,7 @@ fn build_tray_menu(
         obs_toggle,
         obs_hide_pet,
         mcp_toggle,
+        ai_typing,
         fps_60,
         fps_30,
         lang_auto,
@@ -763,6 +777,16 @@ pub fn setup_tray(app: &AppHandle, initial: &AppSettings) -> tauri::Result<()> {
                         state
                             .mcp_enabled
                             .store(enabled, std::sync::atomic::Ordering::Relaxed);
+                        crate::config::save_settings(&s);
+                        s.clone()
+                    };
+                    sync_checkmarks(&updated);
+                    let _ = app.emit("kuro-settings", updated);
+                }
+                "ai_typing" => {
+                    let updated = {
+                        let mut s = state.settings.lock().unwrap();
+                        s.show_ai_typing = !s.show_ai_typing;
                         crate::config::save_settings(&s);
                         s.clone()
                     };

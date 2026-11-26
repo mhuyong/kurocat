@@ -38,6 +38,36 @@ fn store(lang: &str) -> bool {
     true
 }
 
+/// Debounce for the foreground poll: a language is accepted when the first poll sees it (nothing
+/// accepted yet) or when two polls in a row see it. A held switch hotkey that cycles layouts, or
+/// a window change that shows another thread's layout for one poll, then does not flap the
+/// keyboard picture; one real switch costs one extra poll (250 ms).
+#[derive(Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct LangDebounce {
+    accepted: Option<String>,
+    candidate: Option<String>,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl LangDebounce {
+    /// Feeds one poll result; returns the language to announce when it is newly accepted.
+    pub fn feed(&mut self, lang: &str) -> Option<String> {
+        if self.accepted.as_deref() == Some(lang) {
+            self.candidate = None;
+            return None;
+        }
+        let first = self.accepted.is_none();
+        if first || self.candidate.as_deref() == Some(lang) {
+            self.accepted = Some(lang.to_string());
+            self.candidate = None;
+            return Some(lang.to_string());
+        }
+        self.candidate = Some(lang.to_string());
+        None
+    }
+}
+
 /// ISO 639-1 code for a Windows LANGID (low word of an HKL). Thai (primary 0x1E) is always "th".
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn code_for_langid(langid: u16) -> String {
@@ -82,11 +112,24 @@ pub fn start_input_lang_watcher(app: AppHandle, paused_guard: Arc<AtomicBool>) {
     std::thread::spawn(move || {
         let own_pid = std::process::id();
         let mut announced = false;
+        let mut debounce = LangDebounce::default();
+        // Opt-in debug log (agent-debug.flag): one line per change of what the poll sees.
+        let mut last_seen = String::new();
         loop {
-            if !paused_guard.load(Ordering::Relaxed) {
+            let paused = paused_guard.load(Ordering::Relaxed);
+            if crate::ai_typing::debug_enabled() {
+                let seen = if paused { "paused".to_string() } else { win_impl::describe_foreground(own_pid) };
+                if seen != last_seen {
+                    crate::ai_typing::debug_log("input.poll", &seen);
+                    last_seen = seen;
+                }
+            }
+            if !paused {
                 if let Some(langid) = win_impl::foreground_langid(own_pid) {
                     let lang = code_for_langid(langid);
-                    if store(&lang) || !announced {
+                    let settled = debounce.feed(&lang);
+                    if settled.is_some() && (store(&lang) || !announced) {
+                        crate::ai_typing::debug_log("input.lang", &format!("lang={lang} langid=0x{langid:04x}"));
                         announced = true;
                         let json = payload_json(&lang);
                         let _ = app.emit("kuro-input-lang", serde_json::json!({ "lang": lang }));
@@ -136,6 +179,30 @@ mod win_impl {
         }
     }
 
+    /// Opt-in debug log only (agent-debug.flag). Note: `class=` is the foreground app's window class,
+    /// so it names the app in front while the flag is on; nothing typed is ever logged.
+    /// Short description of what the poll sees, for the opt-in debug log: no foreground window,
+    /// KuroCat itself in front (language kept), or the foreground window class + thread layout.
+    pub fn describe_foreground(own_pid: u32) -> String {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.is_null() {
+                return "no_foreground".into();
+            }
+            let mut pid: u32 = 0;
+            let tid = GetWindowThreadProcessId(hwnd, &mut pid);
+            if pid == own_pid {
+                return "own_window_keeps_last".into();
+            }
+            let mut buf = [0u16; 64];
+            let n = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32).max(0) as usize;
+            let class = String::from_utf16_lossy(&buf[..n]);
+            let hkl = GetKeyboardLayout(tid) as usize;
+            format!("class={class} thread_layout=0x{:04x}", hkl & 0xffff)
+        }
+    }
+
     pub fn iso639_for_lcid(lcid: u32) -> Option<String> {
         let mut buf = [0u16; 16];
         let n = unsafe {
@@ -169,6 +236,24 @@ mod tests {
         assert_eq!(code_for_langid(0x0411), "ja");
         assert_eq!(code_for_langid(0x0804), "zh");
         assert_eq!(code_for_langid(0x0412), "ko");
+    }
+
+    #[test]
+    fn debounce_needs_two_polls_except_the_first() {
+        let mut d = LangDebounce::default();
+        assert_eq!(d.feed("th").as_deref(), Some("th"), "first value at once");
+        assert_eq!(d.feed("th"), None);
+        // One poll of another language (window change / transient thread) is not a switch.
+        assert_eq!(d.feed("en"), None);
+        assert_eq!(d.feed("th"), None);
+        // A held hotkey alternating every poll never settles.
+        for i in 0..10 {
+            assert_eq!(d.feed(if i % 2 == 0 { "en" } else { "th" }), None, "poll {i}");
+        }
+        // One real switch: accepted on the second poll that sees it.
+        assert_eq!(d.feed("en"), None);
+        assert_eq!(d.feed("en").as_deref(), Some("en"));
+        assert_eq!(d.feed("en"), None);
     }
 
     #[test]

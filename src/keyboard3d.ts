@@ -378,8 +378,11 @@ function getKeycapAtlas(
   if (cached) return cached;
 
   // Evict previously cached layout atlases so switching 65%/108% never leaks GPU VRAM!
+  // Atlases of the same layout + rotation (the other legend script) stay cached, so the AI's
+  // typing can switch between Thai and Latin legends without rebuilding a texture.
+  const layoutPrefix = `${layoutId}|${rotated180 ? 1 : 0}`;
   for (const [oldKey, oldEntry] of keyAtlasCache) {
-    if (oldKey !== cacheKey) {
+    if (oldKey !== cacheKey && !(oldKey === layoutPrefix || oldKey.startsWith(`${layoutPrefix}|`))) {
       oldEntry.tex.dispose();
       keyAtlasCache.delete(oldKey);
     }

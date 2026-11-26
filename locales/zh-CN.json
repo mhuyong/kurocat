@@ -61,6 +61,8 @@
     "toggle_mcp": "开启 MCP 扩展",
     "copy_mcp": "复制 MCP 配置",
     "mcp_hint": "AI 捏猫",
+    "copy_hooks": "发给 AI 自动配置",
+    "hooks_hint": "写代码提醒",
     "copied_hint": "已复制 ✓",
     "created_hint": "已创建 ✓",
     "desktop_shortcut": "创建桌面图标",

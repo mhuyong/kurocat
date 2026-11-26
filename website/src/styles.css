@@ -31,11 +31,16 @@ html {
   overflow-x: clip;
 }
 
+html:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 body {
   margin: 0;
   padding: 0;
   background: var(--bg);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
   line-height: 1.55;
   overflow-x: clip;
   width: 100%;

@@ -1,6 +1,6 @@
 import type { TailKeyMode } from '../../src/catEngine';
 
-export type Locale = 'zh' | 'en' | 'ja';
+export type Locale = 'zh' | 'en' | 'ja' | 'ko';
 
 export const LANG_STORAGE_KEY = 'qianyi_lang';
 
@@ -10,6 +10,7 @@ export function normalizeLocale(raw: string | null | undefined): Locale | null {
   if (v === 'zh' || v.startsWith('zh-')) return 'zh';
   if (v === 'en' || v.startsWith('en-')) return 'en';
   if (v === 'ja' || v === 'jp' || v.startsWith('ja-')) return 'ja';
+  if (v === 'ko' || v === 'kr' || v.startsWith('ko-')) return 'ko';
   return null;
 }
 
@@ -85,9 +86,9 @@ export interface KuroCatI18nBundle {
 export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
   zh: {
     htmlLang: 'zh-CN',
-    docTitle: 'KuroCat · 免费开源桌面打字小黑猫桌宠（Win/Mac/Linux/Android · OBS · AI 捏猫）— 谦一',
+    docTitle: 'KuroCat — Free Open-Source 3D Desktop Typing Cat & AI Companion | 官方主页 (Win/Mac/Linux/Android)',
     metaDesc:
-      'KuroCat 是一款免费开源、轻量透明置顶的桌面打字猫咪伴侣（Desktop Typing Cat / Bongo Cat 开源替代），支持 Windows 11/10/7、macOS、Linux 与 Android。内置 6 款手绘猫咪 + 大肥鱼鲸鱼娘、自定义尾巴拍键、OBS 原生透明直播源、输密码自动闭眼防偷窥与内置 MCP 协议 AI 捏猫。',
+      'KuroCat (github.com/qianyiai/kurocat) — 免费开源 3D/2D 透明置顶桌面打字小黑猫与 AI 编程伴侣（Bongo Cat 开源替代）。支持 Windows/macOS(Homebrew)/Linux/Android，6 款猫咪 + 大肥鱼、Claude/Codex/DeepSeek/豆包状态联动、OBS 免抠像透明源、输密码自动闭眼防偷窥与 MCP AI 捏猫。',
     text: {
       'nav.back': '← 谦一',
       'nav.playground': '在线试玩',
@@ -152,6 +153,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.macName': 'macOS 通用版（M 芯片 & Intel）',
       'dl.macSub': 'macOS 10.15+ (Catalina 及以上) Universal DMG',
       'dl.tipWinTitle': '🛡️ Windows 浏览器提示「通常不会下载 .exe / 保护你的电脑」怎么办？',
+      'dl.tipBrewTitle': '🍺 macOS Homebrew 一键安装（推荐 · 自动免隔离）',
       'dl.tipMacTitle': '🍎 macOS 首次打开说明（仅需一次 · 无需开着终端）',
       'dl.copyCmd': '复制命令',
       'dl.tipWv2Title': '🪟 Windows 提示「Could not find the WebView2 Runtime」怎么办？',
@@ -225,7 +227,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
     html: {
       'hero.title': 'KuroCat · 敲键盘的小黑猫<br /><span>住进你的桌面</span>',
       'hero.sub':
-        '基于 <strong>Tauri v2 + Rust 原生钩子 + Three.js 3D / Canvas 2D 双引擎</strong> 打造的透明置顶桌面键鼠伴侣。默认 <strong>✨ 3D 体积光影手办模式</strong>（右键双标签页免滚动菜单一键切换 <strong>2D 经典手绘</strong>），安装包仅 <strong>2.16 MB</strong>；v5.1.1 重构 GPU 渲染合批与<strong>游戏自动 30 FPS 省电模式</strong>（活跃 GPU 最高降 88%），内置 <strong>6 款猫咪 + 🐳 大肥鱼</strong>、<strong>游戏自动戴电竞耳机</strong>、<strong>3D 项圈铃铛</strong>、<strong>重启记住鼠标穿透</strong>、<strong>OBS 免抠像直播源</strong>、<strong>密码闭眼防偷窥</strong>、<strong>国内直连秒速更新</strong> 与 <strong>MCP 协议 AI 捏猫</strong>。',
+        '免费开源的透明置顶桌面键鼠伴侣，支持 <strong>3D 手办 / 2D 经典</strong> 一键切换，超低占用不卡游戏。内置 <strong>6 款猫咪 + 大肥鱼</strong>，支持摸头呼噜、输密码自动闭眼、OBS 直播与 <strong>AI 捏猫</strong>。',
       'dl.sub':
         '所有安装包均内置 <strong>20%–150% 无级缩放</strong>、<strong>65% / 108 键随时切换</strong>、<strong>自定义尾巴拍键</strong> 与 <strong>App 内自动更新</strong>。<br />默认提供 <code>qianyi.one</code> 国内高速直链，同时保留 GitHub Releases 官方原链与 SHA-256 校验。',
       'dl.winDesc':
@@ -234,6 +236,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         '原生编译 ARM64 + x86_64 通用镜像，兼容 M1/M2/M3/M4 与老款 Intel Mac（macOS 10.15 Catalina 及以上），内置 65% / 108 键、6 款猫咪与大肥鱼皮肤。打开 <code>.dmg</code> 拖入「应用程序」即可运行。',
       'dl.tipWinBody':
         '由于本项目为免费开源软件、未购买商业 EV 代码签名证书，Edge 浏览器在下载新版本 <code>.exe</code> 时可能会弹出「通常不会下载」提示（全部源码已在 GitHub 公开，可放心使用）：<br /><strong>① Edge 浏览器保留步骤</strong>：鼠标移到下载记录上 → 点右侧<strong>三个点 <code>···</code></strong> → 点<strong>「保留」</strong> → 弹窗显示「删除」按钮时，点击旁边的<strong>下箭头 <code>▾</code>（显示更多）</strong> → 选择<strong>「仍然保留」</strong>即可下载完成（Chrome 请按 <code>Ctrl + J</code> 打开下载页 → 点「保留危险文件」→「仍然保留」）。<br /><strong>② 双击安装若弹出蓝框「Windows 已保护你的电脑」</strong>：点击<strong>「更多信息」</strong> → 点击<strong>「仍要运行」</strong>即可完成安装。',
+      'dl.tipBrewBody':
+        '已上线官方 Homebrew Tap（<code>qianyiai/homebrew-tap</code>），终端执行右侧一行命令即可直接安装并自动清理隔离属性（免手动 <code>xattr</code>），后续可随时运行 <code>brew upgrade --cask kurocat</code> 一键升级。',
       'dl.tipMacBody':
         '由于本项目为免费开源未公证应用，首次拖入「应用程序」后若提示「无法验证开发者」或「已损坏」，<strong>请勿进入包内容用终端运行</strong>，只需打开一次终端粘贴执行右侧命令即可彻底解除隔离（跑完可关闭终端，后续直接双击图标打开）。全局键鼠响应请在<strong>「系统设置 → 隐私与安全性」</strong>中同时勾选<strong>「辅助功能」与「输入监控」</strong>里的 <code>KuroCat</code>，即开即生效（兼容 Karabiner-Elements）。',
       'dl.tipWv2Body':
@@ -367,9 +371,9 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
 
   en: {
     htmlLang: 'en',
-    docTitle: 'KuroCat — Free Open-Source Desktop Typing Cat Pet (Bongo Cat Alternative for Win/Mac/Linux/OBS)',
+    docTitle: 'KuroCat — Free Open-Source 3D Desktop Typing Cat & AI Companion | Official Website (Win/Mac/Linux/Android)',
     metaDesc:
-      'KuroCat is a free open-source, lightweight transparent always-on-top desktop typing & mouse cat companion (Bongo Cat alternative) for Windows, macOS, Linux & Android: 6 hand-crafted cats + BigFish whale-girl, password privacy guard, customizable tail keys, native OBS transparent source, 65%/108-key layouts & built-in MCP AI skin studio.',
+      'KuroCat (github.com/qianyiai/kurocat) — Free open-source 3D/2D transparent desktop typing cat & AI coding companion (Bongo Cat alternative) for Windows, macOS (Homebrew), Linux & Android: 6 cats + BigFish, Claude/Codex/DeepSeek status sync, OBS transparent source, password privacy guard & built-in MCP AI studio.',
     text: {
       'nav.back': '← Qianyi',
       'nav.playground': 'Playground',
@@ -434,6 +438,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.macName': 'macOS Universal (Apple Silicon & Intel)',
       'dl.macSub': 'macOS 10.15+ (Catalina or later) Universal DMG',
       'dl.tipWinTitle': '🛡️ Browser says "isn\'t commonly downloaded" or Windows SmartScreen pops up?',
+      'dl.tipBrewTitle': '🍺 Install on macOS via Homebrew (Recommended)',
       'dl.tipMacTitle': '🍎 macOS First-Launch Guide (One-Time Setup)',
       'dl.copyCmd': 'Copy Command',
       'dl.tipWv2Title': '🪟 Seeing "Could not find the WebView2 Runtime" on Windows?',
@@ -507,7 +512,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
     html: {
       'hero.title': 'KuroCat — A Typing Black Cat<br /><span>Living on Your Desktop</span>',
       'hero.sub':
-        'Built with <strong>Tauri v2 + native Rust hooks + Three.js 3D / Canvas 2D dual engine</strong> as a transparent, always-on-top desk companion. Defaults to <strong>✨ 3D Volumetric Figurine</strong> (two-tab zero-scroll menu to switch <strong>2D Classic</strong>), only <strong>2.16 MB</strong> installer; v5.1.1 introduces instanced GPU batching &amp; <strong>auto 30 FPS Game Eco Mode</strong> (up to 88% lower active GPU), <strong>6 cats + 🐳 BigFish</strong>, <strong>auto-equip gaming headset</strong>, <strong>3D collar bells</strong>, <strong>persistent click-through lock</strong>, <strong>OBS transparent source</strong>, <strong>password privacy guard</strong>, <strong>fast CDN auto-updates</strong>, and <strong>MCP AI cat studio</strong>.',
+        'A free, open-source transparent desktop typing companion with instant <strong>3D / 2D</strong> switching and ultra-low GPU overhead. Includes <strong>6 cats + BigFish</strong>, head-pat purring, password privacy guard, OBS overlay, and <strong>AI cat studio</strong>.',
       'dl.sub':
         'Every build includes <strong>20%–150% smooth scaling</strong>, <strong>65% / 108-key switching</strong>, <strong>customizable tail keys</strong>, and <strong>in-app auto-updates</strong>.<br />Fast CDN mirrors on <code>qianyi.one</code> alongside official GitHub Releases with SHA-256 verification.',
       'dl.winDesc':
@@ -516,6 +521,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'Native ARM64 + x86_64 Universal DMG supporting Apple Silicon M1–M4 and Intel Macs (macOS 10.15 Catalina+). Includes 65%/108-key layouts, all 6 cats & BigFish. Open <code>.dmg</code> and drag to Applications.',
       'dl.tipWinBody':
         'Because KuroCat is free open-source software without a commercial EV code-signing certificate, Edge/Chrome may show a download warning (100% source code is public on GitHub):<br /><strong>① Edge</strong>: Hover the download → click <strong><code>···</code></strong> → <strong>Keep</strong> → click the down arrow <strong><code>▾</code> (Show more)</strong> → <strong>Keep anyway</strong> (Chrome: press <code>Ctrl + J</code> → Keep dangerous file → Keep anyway).<br /><strong>② Windows SmartScreen</strong>: Click <strong>More info</strong> → <strong>Run anyway</strong>.',
+      'dl.tipBrewBody':
+        'Official Homebrew Tap (<code>qianyiai/homebrew-tap</code>) is live. Run the command on the right to install and automatically clear quarantine attributes (no manual <code>xattr</code> needed), and update anytime with <code>brew upgrade --cask kurocat</code>.',
       'dl.tipMacBody':
         'Because this open-source app is not Apple-notarized, if macOS says "cannot be verified" or "damaged" on first launch, run the command on the right once in Terminal to remove the quarantine attribute. Then enable <code>KuroCat</code> in <strong>System Settings → Privacy &amp; Security → Accessibility &amp; Input Monitoring</strong> (Karabiner-Elements compatible).',
       'dl.tipWv2Body':
@@ -649,9 +656,9 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
 
   ja: {
     htmlLang: 'ja',
-    docTitle: 'KuroCat · 無料オープンソースのデスクトップタイピング黒猫ペット（Win/Mac/Linux/OBS対応）',
+    docTitle: 'KuroCat — 無料オープンソース 3D デスクトップタイピング黒猫 & AI コンパニオン | 公式サイト (Win/Mac/Linux/Android)',
     metaDesc:
-      'KuroCat は Windows / macOS / Linux / Android 対応の無料オープンソース透過デスクトップタイピング黒猫ペット（Bongo Cat 代替）。手描き猫 6 種＋クジラ娘、パスワード自動目隠し保護、しっぽキー指定、OBS 透過ソース、65%/108 キー切替、内蔵 MCP AI スキン生成に対応。',
+      'KuroCat (github.com/qianyiai/kurocat) — Windows / macOS (Homebrew) / Linux / Android 対応の無料オープンソース 3D/2D 透過デスクトップタイピング黒猫＆AI コーディングコンパニオン（Bongo Cat 代替）。猫 6 種＋クジラ娘、Claude/Codex/DeepSeek 連携、OBS 透過ソース、パスワード保護、内蔵 MCP AI カスタム対応。',
     text: {
       'nav.back': '← 謙一',
       'nav.playground': '体験版',
@@ -716,6 +723,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'dl.macName': 'macOS ユニバーサル版（M チップ & Intel）',
       'dl.macSub': 'macOS 10.15+ (Catalina 以降) Universal DMG',
       'dl.tipWinTitle': '🛡️ ブラウザのダウンロード警告や SmartScreen が表示されたら？',
+      'dl.tipBrewTitle': '🍺 macOS Homebrew ワンラインインストール（推奨・自動検疫解除）',
       'dl.tipMacTitle': '🍎 macOS 初回起動ガイド（初回のみ・常時ターミナル不要）',
       'dl.copyCmd': 'コマンドをコピー',
       'dl.tipWv2Title': '🪟 Windows で「Could not find the WebView2 Runtime」が出たら？',
@@ -789,7 +797,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
     html: {
       'hero.title': 'KuroCat · キーボードを叩く黒猫が<br /><span>あなたのデスクトップに</span>',
       'hero.sub':
-        '<strong>Tauri v2 + Rust ネイティブフック + Three.js 3D / Canvas 2D デュアルエンジン</strong> で開発した透過・最前面デスクトップペット。初期設定の <strong>✨ 3D フィギュアモード</strong> と <strong>2D クラシック手描き</strong> を 2 タブ式メニューで切替でき、インストーラーはわずか <strong>2.16 MB</strong>。v5.1.1 では GPU インスタンス描画と <strong>ゲーム自動 30 FPS 省電力</strong>（最大 88% 削減）、<strong>猫 6 種 + 🐳 クジラ娘</strong>、<strong>ゲーム自動ヘッドセット</strong>、<strong>3D 首輪ベル</strong>、<strong>透過ロック記憶</strong>、<strong>OBS 透過ソース</strong>、<strong>パスワード自動保護</strong>、<strong>高速 CDN 自動更新</strong>、<strong>MCP AI カスタム猫</strong> を標準搭載。',
+        '無料・オープンソースの透過デスクトップ相棒。<strong>3D / 2D</strong> をワンクリックで切替でき、ゲーム中も超低負荷で動作します。<strong>猫 6 種 + クジラ娘</strong>、なでなでゴロゴロ、パスワード自動保護、OBS 透過配信、<strong>AI カスタム猫</strong> に対応。',
       'dl.sub':
         '全パッケージに <strong>20%–150% 無段階ズーム</strong>・<strong>65% / 108 キー切替</strong>・<strong>しっぽキー選択</strong>・<strong>アプリ内自動更新</strong> を内蔵。<br /><code>qianyi.one</code> 高速ミラーと GitHub Releases 公式リンク（SHA-256 検証対応）を用意しています。',
       'dl.winDesc':
@@ -798,6 +806,8 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
         'Apple Silicon (M1–M4) と Intel Mac（macOS 10.15 Catalina 以降）両対応の Universal DMG。65%/108 キーと全 7 スキンを内蔵。<code>.dmg</code> を開いて「アプリケーション」へドラッグするだけです。',
       'dl.tipWinBody':
         '無料オープンソースで商用コード署名がないため、ダウンロード時に警告が表示される場合があります（全ソースコードは GitHub で公開済み）：<br /><strong>① Edge</strong>：履歴にカーソルを合わせ <strong><code>···</code></strong> → <strong>保存</strong> → <strong><code>▾</code>（詳細表示）</strong> → <strong>保持する</strong>（Chrome は <code>Ctrl + J</code> → 危険なファイルを保存 → 保持）。<br /><strong>② SmartScreen の青い画面</strong>：<strong>詳細情報</strong> → <strong>実行</strong> をクリックしてください。',
+      'dl.tipBrewBody':
+        '公式 Homebrew Tap（<code>qianyiai/homebrew-tap</code>）を公開しました。右のコマンド 1 行で導入でき、検疫属性も自動解除されます（手動 <code>xattr</code> 不要）。以降は <code>brew upgrade --cask kurocat</code> で簡単に更新できます。',
       'dl.tipMacBody':
         '未公証アプリのため初回起動時に「開発元を確認できない」等と出た場合は、ターミナルで右のコマンドを一度だけ実行して隔離属性を解除してください。その後、<strong>システム設定 → プライバシーとセキュリティ</strong> で <strong>アクセシビリティ</strong> と <strong>入力監視</strong> の両方に <code>KuroCat</code> を許可すれば即時動作します（Karabiner-Elements 併用可）。',
       'dl.tipWv2Body':
@@ -865,7 +875,7 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       'feat.mouseImgAlt': 'KuroCat マウス左右独立ハイライトとアプリ内自動更新プレビュー',
     },
     downloads: {
-      'feat.whaleDlFile': 'KuroCat-クジラ娘-14s縦型デモ.mp4',
+      'feat.whaleDlFile': 'KuroCat-クジラ娘-14秒縦型デモ.mp4',
     },
     prompts: {
       'mcp.p1': 'KuroCat MCP を使って、琥珀色の瞳とアイスブルーのキーハイライトを持つブリティッシュショートヘアを作ってすぐ切り替えて',
@@ -926,6 +936,291 @@ export const KUROCAT_I18N: Record<Locale, KuroCatI18nBundle> = {
       copyShort: () => 'コピー',
       totalDownloads: (count) => `累計 ${count} ダウンロード`,
       statsUpdated: (timePart) => `${timePart} (UTC+8) 更新 · 30 秒ごとに自動更新`,
+    },
+  },
+
+  ko: {
+    htmlLang: 'ko',
+    docTitle: 'KuroCat — 무료 오픈소스 3D 바탕화면 타이핑 검은 고양이 & AI 컴패니언 | 공식 웹사이트 (Win/Mac/Linux/Android)',
+    metaDesc:
+      'KuroCat (github.com/qianyiai/kurocat) — Windows, macOS (Homebrew), Linux, Android를 지원하는 무료 오픈소스 3D/2D 투명 바탕화면 타이핑 검은 고양이 & AI 코딩 컴패니언(Bongo Cat 대안). 고양이 6종 + 고래소녀, Claude/Codex/DeepSeek 연동, OBS 투명 소스, 비밀번호 자동 눈 가리기, 내장 MCP AI 커스텀 지원.',
+    text: {
+      'nav.back': '← Qianyi',
+      'nav.playground': '체험판',
+      'nav.whale': '고래소녀 영상',
+      'nav.download': '다운로드',
+      'nav.features': '핵심 기능',
+      'nav.mcp': 'AI 커스텀',
+      'hero.eyebrow': 'Windows · macOS · Linux · Open Source',
+      'hero.allPlatforms': '전체 플랫폼',
+      'hero.ghSource': 'GitHub 소스 ›',
+      'hero.spec1Lbl': '네이티브 Rust 설치 용량',
+      'hero.spec2Val': '7종 + MCP',
+      'hero.spec2Lbl': '고양이 & 고래소녀 · AI 제작',
+      'hero.spec3Val': 'Win / Mac / Linux',
+      'hero.spec3Lbl': 'Apple Silicon · Win7 · KylinOS',
+      'pg.title': '실시간 체험 · 타이핑 & 쓰다듬기',
+      'pg.mode3d': '✨ 3D 모드',
+      'pg.mode2d': '🎨 2D 클래식',
+      'pg.bgDark': '다크 배경',
+      'pg.bgLight': '라이트 배경',
+      'pg.hintKey': '⌨️ 키 입력',
+      'pg.hintMouse': '🖱️ 좌/우 클릭',
+      'pg.hintPet': '🤚 머리 쓰다듬기',
+      'pg.done': '완료',
+      'pg.presetOffice': 'Enter·Space',
+      'pg.presetRightFn': '방향키·넘패드',
+      'pg.presetEdgeMods': '우측 기능키',
+      'pg.presetClear': '초기화',
+      'pg.lblSkin': '스킨',
+      'pg.layout65': '65% 콤팩트',
+      'pg.layout108': '108 풀배열',
+      'pg.orientCat': '고양이 시점',
+      'pg.orientViewer': '시청자 시점',
+      'pg.btnMouse': '🖱️ 좌/우 클릭',
+      'pg.btnCurious': '👀 호기심',
+      'pg.btnCross': '💢 꼬리 쿵',
+      'pg.btnSleep': '💤 졸기',
+      'pg.btnBubbles': '💬 말풍선',
+      'pg.btnPurr': '🔊 골골송',
+      'pg.btnHeadphones': '🎧 헤드셋',
+      'pg.btnOrbit': '🔄 360° 회전',
+      'pg.lblCollar': '3D 목걸이',
+      'pg.collarNone': '없음',
+      'pg.collarRed': '🔴 빨강',
+      'pg.collarBlue': '🔵 파랑',
+      'pg.collarPink': '🩷 분홍',
+      'pg.collarGreen': '🟢 초록',
+      'pg.lblTail': '꼬리 타건',
+      'pg.tailSmart': '스마트 보조',
+      'pg.tailCustom': '커스텀',
+      'pg.tailEdge': '가장자리',
+      'pg.tailOff': '흔들기만',
+      'pg.lblPwd': '비밀번호',
+      'pg.lblScale': '크기 조절',
+      'dl.eyebrow': 'Direct Downloads · Cloudflare Edge CDN',
+      'dl.title': '무료 다운로드 · 3초 만에 시작하기',
+      'dl.winName': 'Windows 65% 클래식 설치판',
+      'dl.winSub': 'Windows 10 / 11 (x64)',
+      'dl.winTag': '추천',
+      'dl.primaryBtn': '고속 직접 다운로드',
+      'dl.ghBtn': 'GitHub 공식 미러 ›',
+      'dl.macName': 'macOS 유니버설 (Apple Silicon & Intel)',
+      'dl.macSub': 'macOS 10.15+ (Catalina 이상) Universal DMG',
+      'dl.tipWinTitle': '🛡️ 브라우저에서 "일반적으로 다운로드되지 않음" 또는 Windows SmartScreen 경고가 뜨나요?',
+      'dl.tipBrewTitle': '🍺 macOS Homebrew 한 줄 설치 (추천 · 격리 자동 해제)',
+      'dl.tipMacTitle': '🍎 macOS 첫 실행 안내 (최초 1회 · 터미널 상시 실행 불필요)',
+      'dl.copyCmd': '명령어 복사',
+      'dl.tipWv2Title': '🪟 Windows에서 "Could not find the WebView2 Runtime" 오류가 뜨나요?',
+      'dl.tipWv2Btn': 'Microsoft WebView2 다운로드 ›',
+      'dl.win7Title': '🖥️ Windows 7 SP1 (64비트) 전용 포터블 (WebView2 109 내장)',
+      'dl.win7Btn': 'Win7 포터블 다운로드 (178.99 MB)',
+      'dl.win7Gh': 'GitHub 공식 미러 (Win7) ›',
+      'dl.linuxTitle': '🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ (x86_64 & ARM64)',
+      'dl.linuxX64Deb': 'x86_64 .deb (2.39 MB)',
+      'dl.linuxArmDeb': 'ARM64 .deb (2.35 MB)',
+      'dl.linuxX64AppImage': 'x86_64 AppImage (77.53 MB) ›',
+      'dl.linuxArmAppImage': 'ARM64 AppImage (75.70 MB) ›',
+      'dl.tipGameTitle': '🎮 전체화면 게임 · OBS 방송 · 안티치트 안전 가이드',
+      'feat.title': '한 픽셀까지 집요하게 다듬은 부드러움',
+      'feat.whaleEyebrow': 'New Skin · 🐳 고래소녀 (BigFish) · 14초 영상',
+      'feat.whaleSpec1Val': '3부위 동시',
+      'feat.whaleSpec1Lbl': '마우스 + 타이핑 + 고래꼬리 타건',
+      'feat.whaleSpec2Val': '속도 반응',
+      'feat.whaleSpec2Lbl': '고속 타건 시 발그레 → 환한 웃음',
+      'feat.whaleSpec3Val': '자동 눈 가리기',
+      'feat.whaleSpec3Lbl': '비밀번호 입력 시 두 손으로 가림',
+      'feat.whaleTryBtn': '위 체험판에서 고래소녀 바로 써보기 ↑',
+      'feat.whaleDlBtn': '1080p 세로 데모 저장 (14초)',
+      'feat.whaleMeta': '1080×1920 · 60fps · 14초 동기화 타건·클릭 사운드 포함',
+      'feat.kbSpec1Val': '108키',
+      'feat.kbSpec1Lbl': '완전한 F열 및 숫자 키패드',
+      'feat.kbSpec2Val': '이중 시점',
+      'feat.kbSpec2Lbl': '고양이 시점 / 시청자 시점',
+      'feat.kbSpec3Val': '정확한 구분',
+      'feat.kbSpec3Lbl': '메인 Enter와 Num↵ 독립 인식',
+      'feat.kbTryBtn': '위 체험판에서 108키 배열 체험하기 ↑',
+      'feat.mouseSpec1Lbl': '좌/우/휠 클릭 완전 독립 발광',
+      'feat.mouseSpec2Lbl': 'SHA-256 자동 무결성 검증',
+      'feat.mouseSpec3Val': '원클릭 업뎃',
+      'feat.mouseSpec3Lbl': 'Win / Mac 무중단 자동 재시작',
+      'bento.1Title': '스크롤 없는 2탭 메뉴 & 클릭 통과 기억',
+      'bento.1Body': '「외형·반응 / 키보드·OBS·설정」 2탭으로 한 화면에 깔끔하게 정리. 20%–150% 자유 조절과 재시작 후 클릭 통과 잠금 유지 및 시작 시 원클릭 해제 바를 제공합니다.',
+      'bento.2Title': '머리 쓰다듬기 & 실시간 합성 골골송',
+      'bento.2Body': '고양이 머리 위로 커서를 올려 좌우로 쓰다듬으면 나른하게 눈을 가늘게 뜨며 Web Audio 24.5Hz로 실시간 합성한 부드러운 골골송을 들려줍니다.',
+      'bento.3Title': '비밀번호 입력 시 자동 눈 가리기',
+      'bento.3Body': 'Windows·macOS 비밀번호 입력창을 OS 수준에서 자동 감지해 Rust 계층에서 키 입력을 차단합니다. 고양이는 눈을 감고, 고래소녀는 두 손으로 눈을 가립니다.',
+      'bento.4Title': 'GPU 인스턴싱 최적화 & 게임 자동 절전',
+      'bento.4Body': '3D 키캡 인스턴스 배칭과 GPU 정점 변형으로 활성 GPU 사용량을 75% 절감. 게임 실행 감지 시 자동으로 30 FPS 절전 모드(최대 88.5% 절감)로 전환됩니다.',
+      'mcp.p1Text': '💬 "KuroCat MCP로 브리티시 숏헤어 블루 고양이를 만들어 바로 적용해 줘"',
+      'mcp.p2Text': '📸 "우리 집 고양이 사진을 보고 꼭 닮은 전용 펫을 만들어 줘!"',
+      'mcp.p3Text': '⚙️ "펫 크기를 85%로 줄이고 108키 시청자 시점으로 바꿔 줘"',
+      'mcp.copyShort': '복사',
+      'mcp.tabHttp': '로컬 HTTP',
+      'mcp.footerMeta': '내장 도구 7종 지원 · 0.4초 핫 리로드',
+      'mcp.copyCfg': '설정 복사',
+      'growth.eyebrow': 'Live Growth · Real-Time Telemetry',
+      'growth.title': '실시간 성장 그래프',
+      'growth.sub': '전체 채널 누적 다운로드 수와 GitHub Stars 추이를 실시간으로 추적합니다. 그래프에 마우스를 올려 시점별 상세 수치를 확인하세요.',
+      'growth.dlLbl': '누적 다운로드',
+      'growth.starLbl': 'GitHub Stars',
+      'growth.modeBoth': '함께 보기',
+      'growth.modeDl': '다운로드만',
+      'growth.modeStars': 'Stars만',
+      'growth.loading': '실시간 성장 데이터를 동기화하는 중…',
+      'growth.starCta': '⭐ GitHub에서 Star로 응원하기 ›',
+      'donate.eyebrow': 'Support Open Source · Crypto',
+      'donate.title': '검은 고양이에게 커피 한 잔 선물하기',
+      'donate.sub': 'KuroCat은 MIT 라이선스의 완전 무료 오픈소스입니다. 코딩·업무·방송 중 작은 즐거움이 되었다면 지속적인 유지보수와 무료 배포를 응원해 주세요.',
+      'donate.addrLbl': 'ETH / BNB / USDT / USDC · EVM 공용 주소',
+      'donate.copy': '주소 복사',
+      'footer.home': 'Qianyi 홈',
+      'footer.pelican': '펠리컨 벤치마크',
+      'footer.donate': '후원하기',
+      'footer.releases': '모든 릴리스 (Releases)',
+    },
+    html: {
+      'hero.title': 'KuroCat · 키보드를 치는 검은 고양이<br /><span>내 바탕화면에 살아요</span>',
+      'hero.sub':
+        '무료 오픈소스 투명 바탕화면 키보드·마우스 펫. <strong>3D 피규어 / 2D 클래식</strong> 원클릭 전환과 초저사양 GPU 최적화로 게임 중에도 가볍게 동작합니다. <strong>고양이 6종 + 고래소녀</strong>, 쓰다듬기 골골송, 비밀번호 눈 가리기, OBS 투명 방송, <strong>AI 펫 커스텀</strong>을 지원합니다.',
+      'dl.sub':
+        '모든 패키지에 <strong>20%–150% 자유 크기 조절</strong>, <strong>65% / 108키 즉시 전환</strong>, <strong>커스텀 꼬리 타건</strong>, <strong>앱 내 자동 업데이트</strong>가 기본 포함됩니다.<br /><code>qianyi.one</code> 고속 CDN 미러와 SHA-256 검증을 지원하는 GitHub Releases 공식 링크를 함께 제공합니다.',
+      'dl.winDesc':
+        '기본 65% 콤팩트 배열로 시작하며 바탕화면·시작 메뉴·제거 항목을 자동 생성합니다. 우클릭 메뉴에서 <strong>108 풀배열</strong>, <strong>커스텀 꼬리 키</strong>, OBS 투명 소스, 원클릭 업데이트를 언제든 사용할 수 있습니다.',
+      'dl.macDesc':
+        'Apple Silicon(M1–M4)과 Intel Mac(macOS 10.15 Catalina 이상)을 모두 지원하는 네이티브 Universal DMG. 65%/108키와 고양이 6종 및 고래소녀 스킨이 모두 포함됩니다. <code>.dmg</code>를 열어 「응용 프로그램」에 드래그하세요.',
+      'dl.tipWinBody':
+        '상용 EV 코드 서명 인증서가 없는 무료 오픈소스 소프트웨어이므로 다운로드 시 브라우저 경고가 표시될 수 있습니다(전체 소스는 GitHub에 100% 공개됨):<br /><strong>① Edge</strong>: 다운로드 항목에 마우스 올리기 → <strong><code>···</code></strong> → <strong>유지</strong> → 삭제 옆 <strong><code>▾</code> (더 보기)</strong> → <strong>그래도 유지</strong> (Chrome: <code>Ctrl + J</code> → 위험한 파일 유지 → 계속 유지).<br /><strong>② Windows SmartScreen 파란 창</strong>: <strong>추가 정보</strong> → <strong>실행</strong>을 클릭하세요.',
+      'dl.tipBrewBody':
+        '공식 Homebrew Tap(<code>qianyiai/homebrew-tap</code>)이 오픈되었습니다. 오른쪽 명령어 한 줄로 설치하며 격리 속성도 자동 해제됩니다(수동 <code>xattr</code> 불필요). 이후 <code>brew upgrade --cask kurocat</code>로 간편하게 업그레이드할 수 있습니다.',
+      'dl.tipMacBody':
+        'Apple 공증을 받지 않은 오픈소스 앱이므로 첫 실행 시 "개발자를 확인할 수 없음" 또는 "손상됨" 알림이 뜨면 터미널에서 오른쪽 명령어를 한 번만 실행해 격리를 해제하세요. 전역 입력 감지는 <strong>시스템 설정 → 개인정보 보호 및 보안</strong>에서 <strong>손쉬운 사용</strong>과 <strong>입력 모니터링</strong> 모두에 <code>KuroCat</code>을 허용하면 즉시 작동합니다(Karabiner-Elements 호환).',
+      'dl.tipWv2Body':
+        'Microsoft Edge WebView2가 없는 구형 Win10 / LTSC 환경에서 발생합니다(<strong>Windows 7 사용자는 아래 전용 포터블 버전을 이용하세요</strong>). 오른쪽 Microsoft 공식 1.8 MB 설치 도구를 <strong>우클릭 → 관리자 권한으로 실행</strong>으로 설치하면 해결됩니다.',
+      'dl.win7Body':
+        'Windows 7 SP1 64비트 전용 네이티브 PE 6.01 빌드(Win8/Win10 DLL 의존성 0). Microsoft의 마지막 Win7 오프라인 <strong>WebView2 109.0.1518.78</strong> 런타임과 256단계 픽셀 투명 안티앨리어싱 렌더링을 탑재해 Aero 여부와 무관하게 흰 테두리가 전혀 없습니다. 압축을 모두 풀고 <code>WebView2Runtime</code>과 같은 폴더의 <code>KuroCat.exe</code>를 실행하세요.',
+      'dl.linuxBody':
+        '루트 권한 없는 X11 <code>XRecord</code> 전역 입력 감지 및 Wayland <code>evdev</code> 폴백, 투명 최상단 창, 클릭 통과(<code>Alt</code> 드래그) 및 자동 실행을 지원합니다. <strong><code>glibc &gt;= 2.34</code></strong>(Ubuntu 22.04+ / Debian 12+ / KylinOS V11+)가 필요합니다. 가벼운 <strong>.deb (2.4 MB)</strong>(<code>libwebkit2gtk-4.1-0</code> 필요) 또는 포터블 <strong>.AppImage</strong>를 선택하세요.',
+      'dl.tipGameBody':
+        '<strong>① 전체화면 &amp; 테두리 없는 창 게임</strong>: 포커스를 빼앗지 않는 최상단 가드를 내장(클릭 통과 잠금 + <code>Alt</code> 임시 이동 권장). 관리자 권한 게임은 트레이에서 <strong>관리자 권한으로 다시 시작</strong>을 사용하세요.<br /><strong>② OBS 투명 방송 (크로마키 불필요)</strong>: 우클릭 또는 트레이에서 <strong>OBS 소스 주소 복사</strong>(로컬 <code>http://127.0.0.1:27421/obs</code>, 기본 꺼짐으로 부하 0)를 누르고 OBS 브라우저 소스에 추가하면 알파 투명 채널, OBS 전용 표시 및 비밀번호 눈 가리기가 모두 연동됩니다.<br /><strong>③ 커널 안티치트 온라인 게임</strong>(발로란트 등): 플레이 전 트레이에서 <strong>입력 감지 일시정지 및 숨기기</strong>를 선택하면 훅을 완전히 해제할 수 있습니다.',
+      'feat.whaleHeadline': '신규 스킨 「고래소녀」 등장<br />고래꼬리 타건 · 발그레 웃음 · 비밀번호 가리기',
+      'feat.whaleBody':
+        '기본 탑재된 <strong>🐳 고래소녀(BigFish)</strong> 스킨은 <strong>왼손 마우스 + 오른손 타이핑 + 물보라 고래꼬리 키 타건</strong> 3부위 동시 동작을 지원합니다. 빠르게 타이핑할수록 수줍게 볼이 붉어지다 환하게 웃고, 비밀번호 입력창에서는 두 손으로 눈을 가리며 모든 키캡을 숨깁니다.',
+      'feat.kbHeadline': '65% 콤팩트 &amp; 108 풀배열<br />양방향 시점을 원클릭으로',
+      'feat.kbBody':
+        '미니멀한 65% 배열과 숫자 키패드가 완비된 108 풀배열을 우클릭 한 번으로 전환하며 우측 하단 기준으로 창 너비를 부드럽게 조절합니다. <strong>고양이 시점(180°)</strong>과 <strong>시청자 시점(정방향 각인)</strong> 전환 시 마우스 좌우 버튼 방향도 자동 동기화됩니다.',
+      'feat.mouseHeadline': '좌/우 클릭 독립 컬러 발광<br />&amp; 원클릭 앱 내 자동 업데이트',
+      'feat.mouseBody':
+        '좌클릭(<code>L</code>), 우클릭(<code>R</code>), 휠/중간 클릭을 선명한 대비 색상과 3D 눌림 음영, <code>LMB</code>/<code>RMB</code> 미니 말풍선으로 완벽히 구분합니다(동시 누름 지원). 고속 CDN 우선(GitHub 폴백) 업데이트 감지로 새 버전이 출시되면 펫 머리 위에 닫을 수 있는 알림 바가 뜨며 SHA-256 검증 후 원클릭 업그레이드를 지원합니다.',
+      'mcp.headline': '반려묘 사진 한 장이면<br />AI가 0.4초 만에 바탕화면에 제작',
+      'mcp.body':
+        'Node.js나 Python 설치가 필요 없습니다. 단일 실행 파일에 <strong>Stdio</strong>와 <strong>로컬 Streamable HTTP(<code>127.0.0.1:27420</code>)</strong> MCP 서버를 모두 내장했습니다. 우클릭「MCP 설정 복사」를 <strong>Claude Desktop / Cursor / Antigravity / Windsurf</strong>에 붙여넣고 원하는 털색, 줄무늬, 삼색 얼룩, 눈동자 색을 말로 주문하세요.',
+      'footer.credit': 'KuroCat · MIT Open Source · Built by <a class="footer-home" href="/?lang=ko">Qianyi</a>',
+    },
+    placeholders: {
+      'pg.pwdPlaceholder': '비밀번호 입력: 고양이는 눈 감기 / 고래소녀는 눈 가리기…',
+    },
+    titles: {
+      'pg.autoDemoTitle': '자동 타이핑 및 마우스 클릭 데모 전환',
+      'pg.mouseTitle': '독립 좌/우 마우스 클릭 데모',
+      'pg.curiousTitle': '호기심 큰 눈동자 발동 (마우스를 빠르게 흔들어도 발동)',
+      'pg.crossTitle': '비행기 귀 + 꼬리 3연타 책상 쿵 발동 (키를 마구 두드려도 발동)',
+      'pg.sleepTitle': '식빵 굽고 Zzz 졸기 발동 (아무 키나 누르면 기상)',
+      'pg.bubblesTitle': '키 입력 말풍선 켜기/끄기',
+      'pg.purrTitle': '쓰다듬기 골골송 켜기/끄기',
+      'pg.headphonesTitle': '게이밍 헤드셋 켜기/끄기 (데스크톱 앱은 게임 실행 시 자동 착용)',
+      'pg.orbitTitle': '켜면 캔버스를 드래그해 3D 모델을 360° 회전할 수 있습니다',
+      'pg.tailSmartTitle': '평소엔 양손으로 치고, 바쁘거나 빠른 Enter 시 꼬리가 자동 보조',
+      'pg.tailCustomTitle': '직접 선택한 키만 꼬리로 타건',
+      'pg.tailEdgeTitle': '꼬리 쪽 우측 가장자리 키만 타건 (WASD 보호)',
+      'pg.tailOffTitle': '꼬리는 자연스럽게 흔들기만 함 (타건 안 함)',
+      'pg.tailPickerTitle': '위 키보드 키캡을 클릭하거나 실제 키를 눌러 꼬리 키 지정',
+      'pg.privacyTitle': '비밀번호 눈 가리기 데모 수동 전환',
+      'pg.scaleResetTitle': '클릭하여 100%로 초기화',
+    },
+    ariaLabels: {
+      'nav.backAria': 'Qianyi 홈으로 돌아가기',
+      'nav.mainAria': '메인 내비게이션',
+      'pg.modeAria': '3D / 2D 렌더 모드 전환',
+      'pg.backdropAria': '미리보기 배경 전환',
+      'pg.canvas2dAria': 'KuroCat 2D 실시간 인터랙티브 체험 캔버스',
+      'pg.canvas3dAria': 'KuroCat 3D 실시간 인터랙티브 체험 캔버스',
+      'pg.tailPickerAria': '꼬리 타건 키 커스텀 설정',
+      'pg.skinGroupAria': '펫 스킨 선택',
+      'pg.layoutAria': '키보드 배열',
+      'pg.orientAria': '키보드 시점',
+      'pg.collarAria': '3D 목걸이 방울 색상',
+      'pg.tailModeAria': '꼬리 타건 모드',
+      'pg.pwdAria': '비밀번호 눈 가리기 데모 입력란',
+      'pg.scaleAria': '크기 조절 20%~150%',
+    },
+    alts: {
+      'hero.iconAlt': 'KuroCat 앱 아이콘',
+      'feat.kbImgAlt': 'KuroCat 65% 콤팩트 대 108 풀배열 및 이중 시점 미리보기',
+      'feat.mouseImgAlt': 'KuroCat 좌/우 마우스 독립 하이라이트 및 앱 내 자동 업데이트 미리보기',
+    },
+    downloads: {
+      'feat.whaleDlFile': 'KuroCat-고래소녀-14초-세로데모.mp4',
+    },
+    prompts: {
+      'mcp.p1': 'KuroCat MCP로 호박색 눈동자와 아이스블루 키 하이라이트를 가진 브리티시 숏헤어 블루 고양이를 만들어 바로 적용해 줘',
+      'mcp.p2': '우리 집 고양이 사진을 보고 KuroCat MCP로 털 무늬와 반점 위치가 꼭 닮은 나만의 바탕화면 펫을 만들어 줘!',
+      'mcp.p3': 'KuroCat 크기를 85%로 줄이고 108 풀배열 시청자 시점으로 바꿔 줘',
+    },
+    skins: {
+      black: '검은 고양이',
+      ragdoll: '랙돌',
+      'orange-tabby': '치즈 태비',
+      calico: '삼색이',
+      tuxedo: '턱시도',
+      siamese: '샴 고양이',
+      dafeiyu: '고래소녀',
+    },
+    tailModeShort: {
+      smart: '꼬리: 스마트',
+      custom: '꼬리: 커스텀',
+      edge: '꼬리: 가장자리',
+      off: '꼬리: 흔들기만',
+    },
+    mcpSnippets: {
+      win: {
+        raw: `{\n  "mcpServers": {\n    "kurocat": {\n      "command": "C:\\\\Users\\\\<사용자명>\\\\AppData\\\\Local\\\\KuroCat\\\\KuroCat.exe",\n      "args": ["--mcp"]\n    }\n  }\n}`,
+        html: `<span class="c-dim">// Windows Stdio 모드 (Claude / Cursor / Antigravity 공통)</span>\n{\n  <span class="c-key">"mcpServers"</span>: {\n    <span class="c-key">"kurocat"</span>: {\n      <span class="c-key">"command"</span>: <span class="c-str">"C:\\\\Users\\\\&lt;사용자명&gt;\\\\AppData\\\\Local\\\\KuroCat\\\\KuroCat.exe"</span>,\n      <span class="c-key">"args"</span>: [<span class="c-str">"--mcp"</span>]\n    }\n  }\n}`,
+      },
+      mac: {
+        raw: `{\n  "mcpServers": {\n    "kurocat": {\n      "command": "/Applications/KuroCat.app/Contents/MacOS/KuroCat",\n      "args": ["--mcp"]\n    }\n  }\n}`,
+        html: `<span class="c-dim">// macOS Stdio 모드 (외부 의존성 없음 · 앱 내장 바이너리 직접 연결)</span>\n{\n  <span class="c-key">"mcpServers"</span>: {\n    <span class="c-key">"kurocat"</span>: {\n      <span class="c-key">"command"</span>: <span class="c-str">"/Applications/KuroCat.app/Contents/MacOS/KuroCat"</span>,\n      <span class="c-key">"args"</span>: [<span class="c-str">"--mcp"</span>]\n    }\n  }\n}`,
+      },
+      http: {
+        raw: `{\n  "mcpServers": {\n    "kurocat": {\n      "url": "http://127.0.0.1:27420/mcp"\n    }\n  }\n}`,
+        html: `<span class="c-dim">// 로컬 Streamable HTTP 모드 (KuroCat 실행 중 직접 연결)</span>\n{\n  <span class="c-key">"mcpServers"</span>: {\n    <span class="c-key">"kurocat"</span>: {\n      <span class="c-key">"url"</span>: <span class="c-str">"http://127.0.0.1:27420/mcp"</span>\n    }\n  }\n}`,
+      },
+    },
+    fmt: {
+      latestVersion: (tag) => `최신 버전 ${tag}`,
+      heroDownloadWin: (size) => `Windows용 무료 다운로드 (${size})`,
+      heroDownloadMac: (size) => `macOS용 무료 다운로드 (${size})`,
+      layout: (id) => (id === '108' ? '108 풀배열' : '65% 콤팩트'),
+      orient: (o) => (o === 'viewer' ? '시청자 시점' : '고양이 시점'),
+      tailPickerBtn: (open, count) =>
+        open ? `✓ 선택 중 (${count}개)` : `🐾 꼬리 키 선택 (${count})`,
+      tailPickerTitleDefault: (count) => `🐾 아래 키캡을 클릭하거나 실제 키를 눌러 지정 (${count}개 선택됨)`,
+      tailKeyAdded: (key, count) => `🐾 "${key}" 추가됨 · 총 ${count}개 (완료 후 테스트)`,
+      tailKeyRemoved: (key, count) => `🐾 "${key}" 해제됨 · 총 ${count}개`,
+      tailPresetApplied: (preset, count) => {
+        const names = { office: 'Enter·Space', rightFn: '방향키·넘패드', edgeMods: '우측 기능키' };
+        return `🐾 "${names[preset]}" 적용됨 (${count}개)`;
+      },
+      tailCleared: () => '🐾 꼬리 키가 모두 초기화되었습니다 (키캡 클릭 또는 입력으로 추가)',
+      autoDemoBtn: (running) => (running ? '⏸ 데모 정지' : '▶ 자동 데모'),
+      privacyBtn: (active) => (active ? '🙈 눈 가리기 중' : '🔒 눈 가리기'),
+      whaleSoundBtn: (muted) => (muted ? '🔇 사운드 켜기' : '🔊 사운드 켜짐'),
+      copied: () => '복사됨 ✓',
+      copyConfig: () => '설정 복사',
+      copyCmd: () => '명령어 복사',
+      copyShort: () => '복사',
+      totalDownloads: (count) => `누적 다운로드 ${count}회`,
+      statsUpdated: (timePart) => `${timePart} (UTC+8) 업데이트 · 30초마다 자동 새로고침`,
     },
   },
 };

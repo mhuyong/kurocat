@@ -49,7 +49,7 @@ fn default_tray_tooltip(lang: &str) -> String {
     t(lang, "tray.tooltip")
 }
 
-fn sync_checkmarks(s: &AppSettings) {
+pub fn sync_checkmarks(s: &AppSettings) {
     if let Ok(guard) = active_handles().lock() {
         if let Some(h) = guard.as_ref() {
             let _ = h.click_through.set_checked(s.click_through_locked);

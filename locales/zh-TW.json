@@ -61,6 +61,8 @@
     "toggle_mcp": "開啟 MCP 擴充",
     "copy_mcp": "複製 MCP 設定",
     "mcp_hint": "AI 捏貓",
+    "copy_hooks": "發給 AI 自動設定",
+    "hooks_hint": "寫程式提醒",
     "copied_hint": "已複製 ✓",
     "created_hint": "已建立 ✓",
     "desktop_shortcut": "建立桌面圖示",

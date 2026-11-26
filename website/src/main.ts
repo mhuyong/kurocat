@@ -18,9 +18,9 @@ import {
 import { keyboardEventToVk } from './webKeyMap';
 import type { CollarColorId, KuroCatEngine3D } from '../../src/catEngine3d';
 
-const LOCAL_MIRROR_VERSION = 'v5.1.1';
-const LOCAL_MIRROR_VER_NUM = '5.1.1';
-const MACOS_MIRROR_VERSION = 'v5.1.1';
+const LOCAL_MIRROR_VERSION = 'v5.1.2';
+const LOCAL_MIRROR_VER_NUM = '5.1.2';
+const MACOS_MIRROR_VERSION = 'v5.1.2';
 
 let currentLocale: Locale = detectInitialLocale();
 let i18n = KUROCAT_I18N[currentLocale];
@@ -28,9 +28,48 @@ const localeListeners: Array<() => void> = [];
 let activeReleaseTag = LOCAL_MIRROR_VERSION;
 let activeReleaseAssets: ReleaseAssetMap | null = null;
 
+const WHALE_DEMO_MEDIA: Record<Locale, { video: string; poster: string }> = {
+  zh: {
+    video: '/kurocat/media/whale-douyin-14s.mp4',
+    poster: '/kurocat/assets/whale-douyin-poster.webp',
+  },
+  en: {
+    video: '/kurocat/media/whale-douyin-14s-en.mp4',
+    poster: '/kurocat/assets/whale-douyin-poster-en.webp',
+  },
+  ja: {
+    video: '/kurocat/media/whale-douyin-14s-ja.mp4',
+    poster: '/kurocat/assets/whale-douyin-poster-ja.webp',
+  },
+  ko: {
+    video: '/kurocat/media/whale-douyin-14s-ko.mp4',
+    poster: '/kurocat/assets/whale-douyin-poster-ko.webp',
+  },
+};
+
+function syncWhaleDemoMedia(locale: Locale): void {
+  const media = WHALE_DEMO_MEDIA[locale];
+  const video = document.getElementById('whale-demo-video') as HTMLVideoElement | null;
+  if (video) {
+    if (video.getAttribute('poster') !== media.poster) {
+      video.poster = media.poster;
+    }
+    if (video.getAttribute('src') !== media.video) {
+      video.setAttribute('src', media.video);
+      video.load();
+      void video.play().catch(() => {});
+    }
+  }
+  const dl = document.getElementById('whale-demo-dl') as HTMLAnchorElement | null;
+  if (dl && dl.getAttribute('href') !== media.video) {
+    dl.setAttribute('href', media.video);
+  }
+}
+
 function setLocale(next: Locale, shouldPersist: boolean): void {
   currentLocale = next;
   i18n = applyStaticI18n(next);
+  syncWhaleDemoMedia(next);
   if (shouldPersist) persistLocale(next);
   if (activeReleaseAssets) {
     applyReleaseUI(activeReleaseTag, activeReleaseAssets);
@@ -1092,6 +1131,19 @@ function initMcpCodeTabs(): void {
     });
   }
 
+  // macOS Homebrew copy
+  const brewBtn = document.getElementById('copy-brew-btn');
+  if (brewBtn) {
+    brewBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText('brew install --cask qianyiai/tap/kurocat').then(() => {
+        brewBtn.textContent = i18n.fmt.copied();
+        window.setTimeout(() => {
+          brewBtn.textContent = i18n.fmt.copyCmd();
+        }, 1600);
+      });
+    });
+  }
+
   // Prompt chips copy
   document.querySelectorAll('.prompt-chip').forEach((chip) => {
     chip.addEventListener('click', () => {
@@ -1158,7 +1210,7 @@ function initLanguageSwitcher(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const lang = btn.dataset.lang;
-      if (lang === 'zh' || lang === 'en' || lang === 'ja') {
+      if (lang === 'zh' || lang === 'en' || lang === 'ja' || lang === 'ko') {
         setLocale(lang, true);
       }
     });

@@ -61,6 +61,8 @@
     "toggle_mcp": "MCP 서버 켜기",
     "copy_mcp": "MCP 설정 복사",
     "mcp_hint": "AI 펫",
+    "copy_hooks": "AI 자동 설정 복사",
+    "hooks_hint": "코딩 알림",
     "copied_hint": "복사됨 ✓",
     "created_hint": "생성됨 ✓",
     "desktop_shortcut": "바탕화면 바로가기 만들기",

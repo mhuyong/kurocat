@@ -61,6 +61,8 @@
     "toggle_mcp": "MCP サーバーを有効化",
     "copy_mcp": "MCP 設定をコピー",
     "mcp_hint": "AI 作成",
+    "copy_hooks": "AI 自動設定コピー",
+    "hooks_hint": "作業通知",
     "copied_hint": "コピー済 ✓",
     "created_hint": "作成済 ✓",
     "desktop_shortcut": "デスクトップアイコン作成",

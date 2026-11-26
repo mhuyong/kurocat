@@ -90,6 +90,10 @@ export function isMacPlatform(): boolean {
   return typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
 }
 
+export function isWindowsPlatform(): boolean {
+  return typeof navigator !== 'undefined' && /Win/i.test(navigator.platform || navigator.userAgent);
+}
+
 export function setActiveLocale(setting?: string | null, backendResolved?: string | null): ShippedLocale {
   const norm = normalizeLanguageSetting(setting);
   if (norm === 'auto') {

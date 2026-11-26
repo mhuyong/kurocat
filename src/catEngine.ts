@@ -219,6 +219,12 @@ const IDLE_RENDER_AFTER_MS = 3000;
 const IDLE_RENDER_PAUSE_MS = 40;
 const KEYBOARD_HIT_HALF_WIDTH_RATIO = 0.54;
 const KEYBOARD_HIT_HALF_HEIGHT_RATIO = 0.56;
+// A tail pat is a one-shot gesture (lift 24px, then slap down). Replaying it for every keystroke of a typing
+// burst makes the tip buzz at the keystroke rate (~18 reversals/s), so only the first key of a burst lifts off.
+const TAIL_PAT_WINDUP_GAP_MS = 260;
+// drawTail() blends between a near swan-neck arch and a far hip sweep over ~173px of tip travel; blending it
+// per keystroke flips the whole tail silhouette, so the blend factor is smoothed instead.
+const TAIL_CROSS_BLEND_RATE = 9;
 
 export class KuroCatEngine {
   private canvas: HTMLCanvasElement;
@@ -260,10 +266,12 @@ export class KuroCatEngine {
     reach: 0,
     hover: 0,
     tapAt: -10000,
+    patAt: -10000,
     releaseAt: -10000,
     impactSquash: 0,
     active: false,
   };
+  private tailCrossLeft = 0;
   private privacyClose = 0;
   private privacyTypingAt = -10000;
   private lastMouseNX = 0.5;
@@ -371,6 +379,7 @@ export class KuroCatEngine {
     this.catTail.targetX = targetPt.x;
     this.catTail.targetY = targetPt.y;
     this.catTail.tapAt = now;
+    this.catTail.patAt = now;
     this.catTail.releaseAt = now + 220;
     this.catTail.impactSquash = 1.0;
     this.kbBounce = Math.min(1, this.kbBounce + 0.35);
@@ -653,6 +662,9 @@ export class KuroCatEngine {
       kbTiltRad: this.kbTiltRad,
       mouseBtnX: mx + localBtnX * c - localBtnY * s,
       mouseBtnY: my + localBtnX * s + localBtnY * c,
+      cursor: this.hasPointerPosition
+        ? { x: this.cursorRelX * this.logicalW, y: this.cursorRelY * this.logicalH }
+        : null,
       mouseNX: this.lastMouseNX,
       mouseLeft: this.mouseLeftDown,
       mouseRight: this.mouseRightDown,
@@ -716,6 +728,7 @@ export class KuroCatEngine {
   // Cursor & 100% live eye tracking + 2.5D head turn
   private cursorRelX = 0.5;
   private cursorRelY = 0.5;
+  private hasPointerPosition = false;
   private cursorOverCat = false;
   private eyeLookX = 0;
   private eyeLookY = 0;
@@ -1089,6 +1102,33 @@ export class KuroCatEngine {
     this.nextZAt = now + 400;
   }
 
+  /** AI Companion trigger: cozy happy squint + soft blush celebration (without requiring cursor hover). */
+  public triggerHappyDemo(durationMs = 2600): void {
+    const now = performance.now();
+    this.wakeCat(now, 'gentle');
+    this.wakeAt = -10000;
+    this.isCross = false;
+    this.annoy = 0;
+    this.curiousUntil = -10000;
+    this.petEnergy = Math.max(this.petEnergy, Math.min(3.5, 0.8 + durationMs / 1000));
+  }
+
+  /** AI Companion trigger: gently wakes up the cat from sleep. */
+  public triggerWakeDemo(): void {
+    const now = performance.now();
+    this.wakeCat(now, 'gentle');
+    this.wakeAt = -10000;
+    this.isCross = false;
+    this.annoy = 0;
+  }
+
+  /** AI Companion trigger: playful single tail pat on Enter/Space. */
+  public triggerTailPatDemo(): void {
+    const vk = 0x0d;
+    this.onKeyDown(vk, false);
+    window.setTimeout(() => this.onKeyUp(vk), 170);
+  }
+
   // ---- Flexible spine coordinate system (exact match to measured 0.3s -> 2.2s shear!) ----
 
   private spinePoint(t: number, breath: number): Vec2 {
@@ -1231,7 +1271,11 @@ export class KuroCatEngine {
       this.catTailHeldAt.set(vk, now);
       this.catTail.targetX = clampedTailPt.x;
       this.catTail.targetY = clampedTailPt.y;
-      this.catTail.tapAt = now;
+      // Continuous typing keeps the tip planted on the keycaps: only a key that arrives after a real pause
+      // gets the lift-and-slap windup, otherwise the tip would buzz at the keystroke rate.
+      const sinceLastPat = now - this.catTail.patAt;
+      this.catTail.patAt = now;
+      if (sinceLastPat >= TAIL_PAT_WINDUP_GAP_MS) this.catTail.tapAt = now;
       this.catTail.impactSquash = 1.0;
 
       // Subtle playful hip shift & rock as the tail pats the chosen key!
@@ -1521,15 +1565,22 @@ export class KuroCatEngine {
     this.petStrokeCount = 0;
   }
 
-  public onWindowCursor(relX: number, relY: number, overCat: boolean): void {
+  public onWindowCursor(relX: number, relY: number, overCat: boolean, input: 'pointer' | 'touch' = 'pointer'): void {
     const now = performance.now();
     const cursorDelta = Math.hypot(relX - this.cursorRelX, relY - this.cursorRelY);
-    if (relX !== this.cursorRelX || relY !== this.cursorRelY || overCat !== this.cursorOverCat) {
+    const hasPointerPosition = input === 'pointer';
+    if (
+      relX !== this.cursorRelX ||
+      relY !== this.cursorRelY ||
+      overCat !== this.cursorOverCat ||
+      hasPointerPosition !== this.hasPointerPosition
+    ) {
       this.wakeRendering(now);
       if (cursorDelta > 0.0015) {
         this.lastCursorEyeAt = now;
       }
     }
+    this.hasPointerPosition = hasPointerPosition;
     this.cursorRelX = relX;
     this.cursorRelY = relY;
     this.cursorOverCat = overCat;
@@ -1994,11 +2045,13 @@ export class KuroCatEngine {
         this.catTail.heldVks.clear();
       }
       const tailAge = Math.max(0, now - this.catTail.tapAt);
-      const tailPressing = this.catTail.active && (this.catTail.heldVks.size > 0 || tailAge < 155);
+      const sinceLastPat = now - this.catTail.patAt;
+      const tailPressing =
+        this.catTail.active && (this.catTail.heldVks.size > 0 || sinceLastPat < 155);
       const sinceTailRelease =
         this.catTail.heldVks.size > 0
           ? 0
-          : Math.max(0, now - Math.max(this.catTail.tapAt + 155, this.catTail.releaseAt));
+          : Math.max(0, now - Math.max(this.catTail.patAt + 155, this.catTail.releaseAt));
       if (this.catTail.active && !tailPressing && sinceTailRelease > 460) {
         this.catTail.active = false;
       }
@@ -2025,6 +2078,14 @@ export class KuroCatEngine {
       this.catTail.tipX += (this.catTail.targetX - this.catTail.tipX) * tipFollow;
       this.catTail.tipY += (this.catTail.targetY - this.catTail.tipY) * tipFollow;
       this.catTail.impactSquash = Math.max(0, this.catTail.impactSquash - dt * 6.5);
+
+      // Smooth the near/far bezier blend used by drawTail() so hand-alternating typing sweeps the tail
+      // silhouette around the hip instead of flickering between two shapes on every keystroke.
+      const tailStartX = this.spinePoint(0.84, 0).x + 56;
+      const tipRel = tailStartX - 10 - this.catTail.tipX;
+      const targetCrossLeft = Math.max(0, Math.min(1, tipRel / (this.kbWidth * 0.65)));
+      this.tailCrossLeft +=
+        (targetCrossLeft - this.tailCrossLeft) * (1 - Math.exp(-TAIL_CROSS_BLEND_RATE * dt));
 
       // Rhythmic 3-beat grumpy tail desk-thump when cross (lift slowly -> slam hard -> bounce keyboard & dust puffs!)
       let targetThumpLift = 0;
@@ -2534,7 +2595,7 @@ export class KuroCatEngine {
     const maxEdgeX = this.logicalW - 14;
     // Near-right keys keep the iconic high swan-neck arch; far-left keys sweep smoothly around the
     // right hip and glide across the front keyboard deck below the cat's belly (zero body clipping!).
-    const crossLeft = Math.max(0, Math.min(1, (startX - 10 - patEndX) / (this.kbWidth * 0.65)));
+    const crossLeft = this.tailCrossLeft;
     const nearCp1X = Math.min(maxEdgeX, Math.max(startX + 44, patEndX + 32));
     const nearCp1Y = startY - 12 - this.catTail.hover * 0.35;
     const nearCp2X = Math.min(maxEdgeX, Math.max(startX + 54, patEndX + 40));
@@ -4454,10 +4515,32 @@ export class KuroCatEngine {
     const hcx = headCenter.x + purrShift;
     const hcy = headCenter.y;
 
+    const contour = s.contour;
+    const hwScale = contour.headWidth;
+    const jawSq = contour.jawSquareness;
+    const chubby = contour.bodyChubbiness;
+    const isFox = contour.faceShape === 'fox';
+    const isOval = contour.faceShape === 'oval';
+
     for (const slice of BODY_SLICES) {
       const sp = this.spinePoint(slice.t, breath);
-      const widen = slice.t > 0.45 ? bellySwell : 1;
-      const hw = slice.hw * widen;
+      let mult = 1.0;
+      if (slice.t <= 0.14) {
+        // Forehead / temples (keep slightly narrower than cheeks so square face has soft rounded top corners, not horns)
+        mult = hwScale * (1 + jawSq * 0.08) * (isOval ? 0.94 : 1.0);
+      } else if (slice.t <= 0.24) {
+        // Eye line
+        mult = hwScale * (1 + jawSq * 0.10) * (isOval ? 0.96 : 1.0);
+      } else if (slice.t <= 0.33) {
+        // Cheeks / jaw (widest & flattest on square Tibetan fox face)
+        mult = hwScale * (1 + jawSq * 0.11) * (isFox ? 0.88 : 1.0);
+      } else if (slice.t <= 0.40) {
+        // Neck transition
+        mult = (hwScale * 0.48 + chubby * 0.52) * (1 + jawSq * 0.08) * (isFox ? 0.90 : 1.0);
+      } else {
+        mult = chubby * (slice.t > 0.45 ? bellySwell : 1);
+      }
+      const hw = slice.hw * mult;
 
       if (slice.t <= 0.38) {
         const tiltW = slice.t <= 0.30 ? 1.0 : (0.42 - slice.t) / 0.12;
@@ -4475,7 +4558,8 @@ export class KuroCatEngine {
       }
     }
 
-    const crownRelY = this.spinePoint(0.11, breath).y - hcy;
+    const crownRelY =
+      this.spinePoint(0.11, breath).y - hcy - jawSq * 1.5 - (isOval ? 6.0 : 0);
     const crownPt = {
       x: hcx - crownRelY * Math.sin(this.headTilt),
       y: hcy + crownRelY * Math.cos(this.headTilt),
@@ -4507,25 +4591,47 @@ export class KuroCatEngine {
       }
     }
 
-    // 2) Unified flexible body path
+    // 2) Unified flexible body path (supports round, square Tibetan fox, wide tiger, fox & oval silhouettes)
     const traceBodyPath = () => {
       ctx.beginPath();
       const crownCos = Math.cos(this.headTilt);
       const crownSin = Math.sin(this.headTilt);
-      ctx.moveTo(leftPts[0].x + 14 * crownCos + 6 * crownSin, leftPts[0].y + 14 * crownSin - 6 * crownCos);
-      ctx.quadraticCurveTo(crownPt.x, crownPt.y - 2, rightPts[0].x - 14 * crownCos + 6 * crownSin, rightPts[0].y - 14 * crownSin - 6 * crownCos);
+      const shoulderInset = 14 * (1 - jawSq * 0.35);
+      const shoulderLift = 6 * (1 - jawSq * 0.30) + (isOval ? 3 : 0);
+      const crownArch = -2 + jawSq * 1.4 - (isOval ? 4 : 0);
+      ctx.moveTo(
+        leftPts[0].x + shoulderInset * crownCos + shoulderLift * crownSin,
+        leftPts[0].y + shoulderInset * crownSin - shoulderLift * crownCos,
+      );
+      ctx.quadraticCurveTo(
+        crownPt.x,
+        crownPt.y + crownArch,
+        rightPts[0].x - shoulderInset * crownCos + shoulderLift * crownSin,
+        rightPts[0].y - shoulderInset * crownSin - shoulderLift * crownCos,
+      );
       ctx.lineTo(rightPts[0].x, rightPts[0].y);
       for (let i = 0; i < rightPts.length - 1; i++) {
         const p0 = rightPts[i];
         const p1 = rightPts[i + 1];
-        ctx.quadraticCurveTo(p0.x, p0.y, (p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5);
+        if (jawSq > 0.35 && i <= 2) {
+          // Crisp straighter box-cheek side for square face (e.g. Tibetan fox)
+          const k = 0.5 + jawSq * 0.36;
+          ctx.quadraticCurveTo(p0.x, p0.y, p0.x + (p1.x - p0.x) * k, p0.y + (p1.y - p0.y) * k);
+        } else {
+          ctx.quadraticCurveTo(p0.x, p0.y, (p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5);
+        }
       }
       ctx.lineTo(rightPts[rightPts.length - 1].x, rightPts[rightPts.length - 1].y);
       ctx.quadraticCurveTo(basePt.x + purrShift, basePt.y + 6, leftPts[leftPts.length - 1].x, leftPts[leftPts.length - 1].y);
       for (let i = leftPts.length - 1; i > 0; i--) {
         const p0 = leftPts[i];
         const p1 = leftPts[i - 1];
-        ctx.quadraticCurveTo(p0.x, p0.y, (p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5);
+        if (jawSq > 0.35 && i <= 3) {
+          const k = 0.5 + jawSq * 0.36;
+          ctx.quadraticCurveTo(p0.x, p0.y, p0.x + (p1.x - p0.x) * k, p0.y + (p1.y - p0.y) * k);
+        } else {
+          ctx.quadraticCurveTo(p0.x, p0.y, (p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5);
+        }
       }
       ctx.lineTo(leftPts[0].x, leftPts[0].y);
       ctx.closePath();
@@ -4765,28 +4871,59 @@ export class KuroCatEngine {
     const airplaneDrop = Math.max(0, -earPerk) * 11;
     const airplaneSpread = Math.max(0, -earPerk) * 6;
 
+    const earShape = contour.earShape;
+    const earScale = contour.earScale;
+    const earMountX = 33 * (0.45 + 0.55 * hwScale) + jawSq * 5.0;
+    const earMountY = -28 - jawSq * 2.5 - (isOval ? 3.5 : 0);
+
     const drawCustomEar = (sideSign: -1 | 1, twitch: number) => {
       ctx.save();
-      ctx.translate(sideSign * (33 + airplaneSpread) + this.faceTurnX * 0.18, -28 + airplaneDrop);
-      ctx.rotate(sideSign * (0.08 - earPerk + twitch));
+      ctx.translate(sideSign * (earMountX + airplaneSpread) + this.faceTurnX * 0.18, earMountY + airplaneDrop);
+      ctx.rotate(sideSign * ((earShape === 'wide' ? 0.28 : 0.08) - earPerk + twitch));
+      ctx.scale(earScale, earScale);
 
-      const earPath = () => {
+      const earPath = (strokeOnly = false) => {
         ctx.beginPath();
-        ctx.moveTo(sideSign * 19, 20);
-        ctx.bezierCurveTo(sideSign * 19, -8, sideSign * 12, -23, sideSign * 3, -21);
-        ctx.bezierCurveTo(sideSign * -8, -18, sideSign * -16, -6, sideSign * -21, 8);
-        ctx.closePath();
+        if (earShape === 'round') {
+          // Tiger / bear / panda rounded semicircular ear
+          const r = 17.5;
+          ctx.arc(sideSign * 1, -2, r, Math.PI * 0.92, Math.PI * 2.08);
+          if (!strokeOnly) ctx.closePath();
+        } else if (earShape === 'tall') {
+          // Fox / bunny / corgi tall alert pointed ear
+          ctx.moveTo(sideSign * 16, 18);
+          ctx.bezierCurveTo(sideSign * 18, -12, sideSign * 11, -38, sideSign * 2, -37);
+          ctx.bezierCurveTo(sideSign * -8, -34, sideSign * -15, -14, sideSign * -17, 10);
+          if (!strokeOnly) ctx.closePath();
+        } else if (earShape === 'small') {
+          // Compact low-profile ear (Tibetan fox / sea otter)
+          ctx.moveTo(sideSign * 14, 12);
+          ctx.bezierCurveTo(sideSign * 14, -4, sideSign * 9, -15, sideSign * 2, -14);
+          ctx.bezierCurveTo(sideSign * -6, -13, sideSign * -12, -3, sideSign * -14, 8);
+          if (!strokeOnly) ctx.closePath();
+        } else if (earShape === 'wide') {
+          // Flared wide fennec / caracal ear
+          ctx.moveTo(sideSign * 24, 20);
+          ctx.bezierCurveTo(sideSign * 28, -8, sideSign * 20, -28, sideSign * 7, -27);
+          ctx.bezierCurveTo(sideSign * -8, -23, sideSign * -18, -8, sideSign * -22, 10);
+          if (!strokeOnly) ctx.closePath();
+        } else {
+          ctx.moveTo(sideSign * 19, strokeOnly ? 17 : 20);
+          ctx.bezierCurveTo(sideSign * 19, -8, sideSign * 12, -23, sideSign * 3, -21);
+          ctx.bezierCurveTo(sideSign * -8, -18, sideSign * -16, -6, sideSign * (strokeOnly ? -19 : -21), strokeOnly ? 5 : 8);
+          if (!strokeOnly) ctx.closePath();
+        }
       };
 
       const baseEarCol =
         s.pattern === 'calico' && sideSign === -1
           ? s.maskColor || s.earOuterColor
           : s.earOuterColor;
-      const earGrad = ctx.createLinearGradient(0, -23, 0, 18);
+      const earGrad = ctx.createLinearGradient(0, earShape === 'tall' ? -37 : -23, 0, 18);
       earGrad.addColorStop(0.0, s.earTipColor || baseEarCol);
       earGrad.addColorStop(1.0, baseEarCol);
       ctx.fillStyle = earGrad;
-      earPath();
+      earPath(false);
       ctx.fill();
 
       ctx.shadowBlur =0; /* perf: no per-frame blur */
@@ -4794,21 +4931,30 @@ export class KuroCatEngine {
 
       if (s.outlineColor) {
         ctx.strokeStyle = s.outlineColor;
-        ctx.lineWidth = 1.85;
+        ctx.lineWidth = 1.85 / Math.max(0.7, earScale);
         ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(sideSign * 19, 17);
-        ctx.bezierCurveTo(sideSign * 19, -8, sideSign * 12, -23, sideSign * 3, -21);
-        ctx.bezierCurveTo(sideSign * -8, -18, sideSign * -16, -6, sideSign * -19, 5);
+        earPath(true);
         ctx.stroke();
       }
 
       if (s.earInnerColor) {
         ctx.fillStyle = s.earInnerColor;
         ctx.beginPath();
-        ctx.moveTo(sideSign * 11, 10);
-        ctx.bezierCurveTo(sideSign * 11, -3, sideSign * 7, -13, sideSign * 2, -11);
-        ctx.bezierCurveTo(sideSign * -4, -9, sideSign * -9, -1, sideSign * -10, 8);
+        if (earShape === 'round') {
+          ctx.arc(sideSign * 1, -1, 10.2, Math.PI * 0.95, Math.PI * 2.05);
+        } else if (earShape === 'tall') {
+          ctx.moveTo(sideSign * 9, 9);
+          ctx.bezierCurveTo(sideSign * 10, -8, sideSign * 6, -24, sideSign * 1.5, -23);
+          ctx.bezierCurveTo(sideSign * -4, -20, sideSign * -8, -6, sideSign * -9, 7);
+        } else if (earShape === 'small') {
+          ctx.moveTo(sideSign * 8, 6);
+          ctx.bezierCurveTo(sideSign * 8, -2, sideSign * 5, -9, sideSign * 1, -8);
+          ctx.bezierCurveTo(sideSign * -3, -7, sideSign * -7, -1, sideSign * -7, 5);
+        } else {
+          ctx.moveTo(sideSign * 11, 10);
+          ctx.bezierCurveTo(sideSign * 11, -3, sideSign * 7, -13, sideSign * 2, -11);
+          ctx.bezierCurveTo(sideSign * -4, -9, sideSign * -9, -1, sideSign * -10, 8);
+        }
         ctx.closePath();
         ctx.fill();
       }
@@ -4869,7 +5015,8 @@ export class KuroCatEngine {
       ctx.stroke();
     }
 
-    // Whiskers
+    // Whiskers (adapt horizontal anchor smoothly for wide/square faces)
+    const whiskerAnchorX = 34 * (0.55 + 0.45 * hwScale);
     ctx.strokeStyle = s.whiskerColor;
     ctx.lineWidth = 1.1;
     ctx.lineCap = 'round';
@@ -4879,12 +5026,12 @@ export class KuroCatEngine {
       const wy = 16 + i * 5.0;
       const slant = 2.0 + i * 1.1;
       ctx.beginPath();
-      ctx.moveTo(-34 + wShift, wy);
-      ctx.lineTo(-34 + wShift - leftLen, wy + slant);
+      ctx.moveTo(-whiskerAnchorX + wShift, wy);
+      ctx.lineTo(-whiskerAnchorX + wShift - leftLen, wy + slant);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(34 + wShift, wy);
-      ctx.lineTo(34 + wShift + rightLen, wy + slant);
+      ctx.moveTo(whiskerAnchorX + wShift, wy);
+      ctx.lineTo(whiskerAnchorX + wShift + rightLen, wy + slant);
       ctx.stroke();
     }
 
@@ -4950,15 +5097,17 @@ export class KuroCatEngine {
       const curiousTilt = (idx === 0 ? -0.1 : 0.1) * (0.25 + this.typingHunch * 0.75);
       ctx.rotate(curiousTilt);
 
-      const hasGrumpyLid = cross > 0.04;
-      const innerDrop = -openRy + openRy * 0.90 * cross;
-      const outerDrop = -openRy + openRy * 0.56 * cross;
+      const restSquint = s.contour.eyeSquint;
+      const hasLid = cross > 0.04 || restSquint > 0.02;
+      const restDrop = -openRy + openRy * 1.12 * restSquint;
+      const innerDrop = Math.max(restDrop, -openRy + openRy * 0.90 * cross);
+      const outerDrop = Math.max(restDrop, -openRy + openRy * 0.56 * cross);
       const leftDrop = idx === 0 ? outerDrop : innerDrop;
       const rightDrop = idx === 0 ? innerDrop : outerDrop;
 
-      // Clip the eye cleanly below the slanted grumpy eyelid so bicolor masks, tabby stripes & spots stay 100% seamless!
+      // Clip the eye cleanly below the upper eyelid (grumpy anger or Tibetan-fox half-lidded restSquint)
       ctx.save();
-      if (hasGrumpyLid) {
+      if (hasLid) {
         ctx.beginPath();
         ctx.moveTo(-rx - 4, leftDrop);
         ctx.lineTo(rx + 4, rightDrop);
@@ -5014,12 +5163,12 @@ export class KuroCatEngine {
 
       ctx.restore(); // end grumpy eyelid clip
 
-      if (hasGrumpyLid && s.eyeRimColor && openRy > 2.2) {
+      if (hasLid && openRy > 2.2) {
         ctx.save();
         ctx.beginPath();
         ctx.ellipse(0, 0, rx + 0.9, openRy + 0.9, 0, 0, Math.PI * 2);
         ctx.clip();
-        ctx.strokeStyle = s.eyeRimColor;
+        ctx.strokeStyle = s.eyeRimColor || s.outlineColor || '#262426';
         ctx.lineWidth = 1.9;
         ctx.lineCap = 'round';
         ctx.beginPath();

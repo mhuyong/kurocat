@@ -8,6 +8,7 @@
   <body>
     <canvas id="pet-canvas"></canvas>
     <canvas id="pet-canvas-3d" class="hidden"></canvas>
+    <div id="agent-bubble" class="agent-bubble hidden" role="status" aria-live="polite"></div>
 
     <div id="update-toast" class="update-toast hidden" role="status" aria-live="polite">
       <span class="update-toast-text" id="update-toast-text">✨ 新版本</span>
@@ -109,6 +110,10 @@
         <span data-i18n="menu.copy_mcp">复制 MCP 配置</span>
         <span class="menu-hint" id="mcp-copy-hint" data-i18n="menu.mcp_hint">AI 捏猫</span>
       </button>
+      <button class="menu-item" data-action="copy-hooks" id="btn-copy-hooks">
+        <span data-i18n="menu.copy_hooks">复制 AI 伴侣 Hook</span>
+        <span class="menu-hint" id="hooks-copy-hint" data-i18n="menu.hooks_hint">写代码提醒</span>
+      </button>
       <div class="menu-sep"></div>
       <div class="menu-scale-row">
         <span class="menu-scale-label" data-i18n="menu.kb_label">键盘配列与方向</span>
@@ -185,7 +190,7 @@
       </button>
       <button class="menu-item" data-action="check-update" id="btn-check-update">
         <span id="update-btn-label">检查更新</span>
-        <span class="menu-hint" id="update-hint">v5.1.1</span>
+        <span class="menu-hint" id="update-hint">v5.1.2</span>
       </button>
       <button class="menu-item danger" data-action="quit">
         <span data-i18n="menu.quit">退出 KuroCat</span>

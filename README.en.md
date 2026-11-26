@@ -3,7 +3,8 @@
 <p align="center">
   <a href="./README.md">🇨🇳 简体中文</a> &nbsp;|&nbsp;
   <strong>🇺🇸 English</strong> &nbsp;|&nbsp;
-  <a href="./README.ja.md">🇯🇵 日本語</a>
+  <a href="./README.ja.md">🇯🇵 日本語</a> &nbsp;|&nbsp;
+  <a href="./README.ko.md">🇰🇷 한국어</a>
 </p>
 
 <p align="center">
@@ -13,33 +14,38 @@
   <img src="https://img.shields.io/badge/Platform-Win11%2F10%2F7%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-818cf8?style=flat-square" alt="Cross Platform" />
 </p>
 
+> 🔒 **Official Channels Only**: [GitHub Repository](https://github.com/qianyiai/kurocat) · [Official Website (qianyi.one/kurocat)](https://qianyi.one/kurocat/?lang=en) · [Official Homebrew Tap](https://github.com/qianyiai/homebrew-tap) *(Third-party domains are unaffiliated mirrors — always download from official sources.)*
+
 > 🌐 **Official Website, Live Web Playground & Fast Downloads**: [**https://qianyi.one/kurocat/**](https://qianyi.one/kurocat/) ([English UI](https://qianyi.one/kurocat/?lang=en))
 
 A lightweight, transparent, always-on-top desktop typing & mouse companion for **Windows (Win11/10 & Win7 SP1) / macOS (10.15+ Apple Silicon & Intel) / Linux (Ubuntu / Debian / KylinOS / UOS)** — built with **Tauri v2 (native Rust global hooks + built-in MCP server + Three.js 3D / HTML5 Canvas 2D dual engine)**. Zero external runtime dependencies, ~24 MB RAM footprint. Defaults to **✨ 3D Volumetric Figurine Mode** with one-click switching to **🎨 2D Classic Hand-Drawn**, and ships out of the box with **6 hand-crafted cat skins + 🐳 BigFish (whale-girl)** (Classic Black Cat, Ragdoll, Orange Tabby, Calico, Tuxedo, Siamese, and BigFish), **optional 3D collar bells & gaming headset (auto-equips in PC games, both off by default)**, **system-level password privacy guard**, **4 customizable tail-key patting modes**, **native OBS transparent Browser Source**, and a **built-in MCP server** so AI can create your own cat from a photo in one sentence (with 1:1 `spots[]` markings synced across 3D & 2D)!
 
-## 🎬 Live Web Playground & 14s BigFish Demo Video
+## 🎬 3D Black Cat Interactive Demo & 14s BigFish Demo Video
 
 <table>
   <tr>
-    <td align="center" width="54%" valign="top">
-      <a href="https://qianyi.one/kurocat/?lang=en" target="_blank" rel="noopener">
-        <img src="docs/playground-demo.webp" alt="KuroCat live interactive web playground (7 skins · 65%/108-key · password privacy guard)" width="400" />
+    <td align="center" width="52%" valign="top">
+      <a href="https://qianyi.one/kurocat/?lang=en#playground" target="_blank" rel="noopener">
+        <img src="docs/wake-pet-demo-en.webp" alt="KuroCat 3D Black Cat Demo (Napping → Woken Up Angry by Typing → Head-Pat Purr Calm Down)" width="380" />
       </a>
       <br/>
-      <strong>🎮 <a href="https://qianyi.one/kurocat/?lang=en">Try the Live Web Playground (type on your keyboard &amp; pet the cat) →</a></strong>
+      <strong>🐈‍⬛ <a href="https://qianyi.one/kurocat/?lang=en#playground">Try the Live 3D Web Playground (type &amp; pet the cat) →</a></strong>
       <br/>
-      <sub>3D &amp; 2D toggle · 3D collar &amp; headset · 360° orbit · 6 cats + 🐳 BigFish · 65%/108-key · Dual orientation · Customizable tail keys · Password guard · 20%–150% scale</sub>
+      <sub>
+        Napping → Woken up grumpy by typing → Head-pat purring calm down · 6 cats + 3D/2D toggle<br/>
+        📥 <a href="https://qianyi.one/kurocat/media/wake-pet-9s-en.mp4">Watch / Download 9s MP4 with Purr Audio</a>
+      </sub>
     </td>
-    <td align="center" width="46%" valign="top">
+    <td align="center" width="48%" valign="top">
       <a href="https://qianyi.one/kurocat/?lang=en#whale-demo" target="_blank" rel="noopener">
-        <img src="docs/whale-demo.webp" alt="KuroCat 🐳 BigFish (whale-girl) 14s vertical demo video" width="272" />
+        <img src="docs/whale-demo-en.webp" alt="KuroCat 🐳 BigFish (whale-girl) 14s vertical demo video" width="272" />
       </a>
       <br/>
       <strong>🐳 <a href="https://qianyi.one/kurocat/?lang=en#whale-demo">Watch 1080×1920 60fps Demo Video with Audio →</a></strong>
       <br/>
       <sub>
         3-limb mouse + typing + whale-tail slaps → speed-reactive blush &amp; happy laugh → hands-over-eyes password privacy<br/>
-        📥 <a href="https://qianyi.one/kurocat/media/whale-douyin-14s.mp4">Direct MP4 Mirror</a> · <a href="https://github.com/qianyiai/kurocat/releases/download/v4.7.0/KuroCat-whale-demo-14s.mp4">GitHub Original</a>
+        📥 <a href="https://qianyi.one/kurocat/media/whale-douyin-14s-en.mp4">Direct MP4 Mirror</a> · <a href="https://github.com/qianyiai/kurocat/releases/download/v4.7.0/KuroCat-whale-demo-14s.mp4">GitHub Original</a>
       </sub>
     </td>
   </tr>
@@ -47,9 +53,9 @@ A lightweight, transparent, always-on-top desktop typing & mouse companion for *
 
 ## 📥 Direct Downloads (Windows / Win7 / macOS / Linux)
 
-Visit [Releases](https://github.com/qianyiai/kurocat/releases) or grab the latest **`v5.1.1`** installers below (featuring **5-language Desktop i18n (`zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` + system auto)**, **deep memory slimming (~50 MB reclaimed via 25s side-menu auto-destroy, 8s 3D→2D WebGL dispose, 9× smaller keycap atlas)**, **2D shadowBlur removal speedup + 60/30 FPS Eco cap**, **3D/2D wake-from-sleep grumpy "morning mood" + head-pet calm-down**, **macOS ad-hoc upgrade TCC auto-reset**, plus **✨ 3D Volumetric Figurine / 🎨 2D Classic dual engine**, **3D collar bells & auto gaming headset**, **MCP AI `spots[]` studio**, **OBS transparent Browser Source**, and **password privacy guard**):
+Visit [Releases](https://github.com/qianyiai/kurocat/releases) or grab the latest **`v5.1.2`** installers below (featuring **🤖 AI Coding Companion live status sync for Doubao Work / WorkBuddy / DeepSeek Harness / Codex / Qwen / Antigravity / Claude Code (auto-typing while working + bubble alerts on waiting/error/done)**, **MCP 2D/3D face & ear contour sculpting (10 tools + 16 spots)**, **2D/3D switch & WebGL self-healing + instant first side-menu click**, **single-instance guard, Win11 updater lock fix, macOS wake/drag & Linux scale fixes**, plus **✨ 3D / 🎨 2D dual engine**, **5-language i18n**, **OBS transparent Browser Source**, and **password privacy guard**):
 
-- **🪟 Windows 10 / 11 (65% Installer · `v5.1.1`)**: [**`KuroCat-5.1.1-x64-setup.exe`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-5.1.1-x64-setup.exe) (2.15 MB) | [**Fast Mirror**](https://qianyi.one/kurocat/?lang=en#download)
+- **🪟 Windows 10 / 11 (65% Installer · `v5.1.2`)**: [**`KuroCat-5.1.2-x64-setup.exe`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-5.1.2-x64-setup.exe) (2.15 MB) | [**Fast Mirror**](https://qianyi.one/kurocat/?lang=en#download)
   - Defaults to the 65% mechanical keyboard and creates Desktop, Start Menu, and Uninstaller entries. Switch anytime via right-click or system tray to **108-key full-size**, **🐳 BigFish**, **OBS transparent source**, or **Check for Updates**.
   - **Tips & FAQ**:
     - **Browser "isn't commonly downloaded" / Windows SmartScreen prompt**: KuroCat is 100% open-source without a commercial EV code-signing certificate.
@@ -58,16 +64,17 @@ Visit [Releases](https://github.com/qianyiai/kurocat/releases) or grab the lates
       - **SmartScreen blue dialog**: Click **More info** → **Run anyway**.
     - On stripped Win10 / LTSC builds missing `WebView2 Runtime`, install Microsoft's official 1.8 MB bootstrapper (Run as Administrator): [`MicrosoftEdgeWebview2Setup.exe`](https://go.microsoft.com/fwlink/p/?LinkId=2124703).
     - **Fullscreen Games / Admin Elevation / OBS Streaming**: Features a non-focus-stealing topmost Z-order guard for borderless & FSO games (enable **Lock Click-Through** and hold `Alt` anytime to move/right-click). If a game runs elevated, right-click the tray icon → **Restart as Administrator**. For OBS streaming without chroma-key, right-click → **Copy OBS Transparent Source URL** (`http://127.0.0.1:27421/obs`, supports **OBS-Only Mode** + synced password privacy). For kernel anti-cheat games (e.g. Valorant), use tray → **Pause Hook & Hide (Anti-Cheat Safe Mode)**.
-- **🖥️ Windows 7 SP1 (64-bit Dedicated Portable · `v5.1.1`)**: [**`KuroCat-v5.1.1-win7-x64-portable.zip`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-v5.1.1-win7-x64-portable.zip) (178.94 MB) | [**Fast Mirror**](https://qianyi.one/kurocat/releases/v5.1.1/KuroCat-v5.1.1-win7-x64-portable.zip)
+- **🖥️ Windows 7 SP1 (64-bit Dedicated Portable · `v5.1.2`)**: [**`KuroCat-v5.1.2-win7-x64-portable.zip`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-win7-x64-portable.zip) (178.94 MB) | [**Fast Mirror**](https://qianyi.one/kurocat/releases/v5.1.2/KuroCat-v5.1.2-win7-x64-portable.zip)
   - Native PE 6.01 build (zero Win8/Win10 DLL imports), bundles Microsoft's final Win7 offline **WebView2 109.0.1518.78** runtime, and uses native Win7 **256-level per-pixel anti-aliased `UpdateLayeredWindow`** compositing (zero white box with or without Aero). Extract all files and run `KuroCat.exe` alongside `WebView2Runtime`.
-- **🍎 macOS 10.15 Catalina+ (Apple Silicon M1–M4 & Intel Universal · `v5.1.1`)**: [**`KuroCat-v5.1.1-macos-universal.dmg`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-v5.1.1-macos-universal.dmg) (5.93 MB) | [**Fast Mirror**](https://qianyi.one/kurocat/releases/v5.1.1/KuroCat-v5.1.1-macos-universal.dmg)
+- **🍎 macOS 10.15 Catalina+ (Apple Silicon M1–M4 & Intel Universal · `v5.1.2`)**: [**`KuroCat-v5.1.2-macos-universal.dmg`**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-macos-universal.dmg) (5.93 MB) | [**Fast Mirror**](https://qianyi.one/kurocat/releases/v5.1.2/KuroCat-v5.1.2-macos-universal.dmg)
+  - **🍺 Install via Homebrew (Recommended)**: `brew install --cask qianyiai/tap/kurocat` (supports `brew upgrade --cask kurocat` and automatically clears macOS quarantine attributes).
   - Open `.dmg` and drag `KuroCat.app` into **Applications**. Includes 3D/2D switcher, 65%/108-key layouts, and all 7 skins.
   - **First Launch (unsigned open-source app)**: If Gatekeeper warns "cannot be verified" or "damaged", run `xattr -cr /Applications/KuroCat.app` once in Terminal (future in-app updates handle this automatically).
   - **Input Permissions**: Enable `KuroCat` in **System Settings → Privacy & Security → Accessibility** and **Input Monitoring** (takes effect immediately; compatible with Karabiner-Elements).
   - **macOS Stdio MCP Path**: `/Applications/KuroCat.app/Contents/MacOS/KuroCat` with args `["--mcp"]`, or connect to `http://127.0.0.1:27420/mcp` while running.
-- **🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ / UOS (`v5.1.1`)**:
-  - **x86_64**: [**`.deb` (2.38 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-v5.1.1-linux-amd64.deb) · [**`.AppImage` (77.52 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-v5.1.1-linux-amd64.AppImage)
-  - **ARM64**: [**`.deb` (2.34 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-v5.1.1-linux-arm64.deb) · [**`.AppImage` (75.69 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.1/KuroCat-v5.1.1-linux-arm64.AppImage)
+- **🐧 Linux / Ubuntu 22.04+ / Debian 12+ / KylinOS V11+ / UOS (`v5.1.2`)**:
+  - **x86_64**: [**`.deb` (2.38 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-amd64.deb) · [**`.AppImage` (77.52 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-amd64.AppImage)
+  - **ARM64**: [**`.deb` (2.34 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-arm64.deb) · [**`.AppImage` (75.69 MB)**](https://github.com/qianyiai/kurocat/releases/download/v5.1.2/KuroCat-v5.1.2-linux-arm64.AppImage)
   - **Requirements**: Built on Tauri v2 / Ubuntu 22.04 baseline; requires **`glibc >= 2.34`** (`.deb` requires **`libwebkit2gtk-4.1-0`** and **`libayatana-appindicator3-1`**; not compatible with Ubuntu 20.04 / `glibc 2.31` systems such as KylinOS V10 SP1).
   - Dynamically loads X11 `XRecord` for rootless global input (with automatic `evdev` fallback on Wayland). Fast mirrors available at [`https://qianyi.one/kurocat/?lang=en#linux-download`](https://qianyi.one/kurocat/?lang=en#linux-download).
 
@@ -192,3 +199,4 @@ KuroCat is completely free and open-source under the MIT License. If this tiny d
 Released under the [MIT License](LICENSE).
 
 - The built-in **🐳 BigFish (whale-girl)** skin uses runtime sprite assets derived from the MIT-licensed project [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) (with reference to [QCYTSN/dsh-dafeiyu](https://github.com/QCYTSN/dsh-dafeiyu)). See `src/assets/dafeiyu/LICENSE-MIT.txt` for full license details.
+- Special thanks to our community contributors: [@XYZliang](https://github.com/XYZliang), [@CandySunPlus](https://github.com/CandySunPlus) (#51), [@Jack-GPT](https://github.com/Jack-GPT) (#47, #64), [@Mangome](https://github.com/Mangome) (#67, #68), [@Zyred9](https://github.com/Zyred9) (#48), [@bj-wangxiaoxiao](https://github.com/bj-wangxiaoxiao) (#65), [@hacksmo](https://github.com/hacksmo) (#45), and [@LiMuhua](https://github.com/LiMuhua) (#75).

@@ -75,14 +75,21 @@
             <span data-i18n="menu.toggle_sound">摸头呼噜声</span>
             <span class="menu-check" id="chk-sound">✓</span>
           </button>
-          <button class="menu-item" data-action="toggle-top">
-            <span data-i18n="menu.toggle_top">始终置顶显示</span>
-            <span class="menu-check" id="chk-top">✓</span>
+
+          <div class="menu-sep"></div>
+
+          <button class="menu-item" data-action="toggle-mcp">
+            <span data-i18n="menu.toggle_mcp">开启 MCP 扩展</span>
+            <span class="menu-check" id="chk-mcp">✓</span>
           </button>
-          <button class="menu-item" data-action="toggle-autostart">
-            <span data-i18n="menu.toggle_autostart">开机自动启动</span>
-            <span class="menu-check" id="chk-autostart"></span>
-          </button>
+          <div class="mcp-copy-row">
+            <button class="mcp-copy-btn" data-action="copy-mcp" id="btn-copy-mcp" type="button">
+              <span id="mcp-copy-hint" data-i18n="menu.copy_mcp">复制 MCP 配置</span>
+            </button>
+            <button class="mcp-copy-btn" data-action="copy-hooks" id="btn-copy-hooks" type="button">
+              <span id="hooks-copy-hint" data-i18n="menu.copy_hooks">发给 AI 自动配置</span>
+            </button>
+          </div>
         </div>
 
         <!-- Tab 2: Keyboard, OBS, MCP & System -->
@@ -173,17 +180,14 @@
 
           <div class="menu-sep"></div>
 
-          <button class="menu-item" data-action="toggle-mcp">
-            <span data-i18n="menu.toggle_mcp">开启 MCP 扩展</span>
-            <span class="menu-check" id="chk-mcp">✓</span>
+          <button class="menu-item" data-action="toggle-top">
+            <span data-i18n="menu.toggle_top">始终置顶显示</span>
+            <span class="menu-check" id="chk-top">✓</span>
           </button>
-          <button class="menu-item" data-action="copy-mcp" id="btn-copy-mcp">
-            <span data-i18n="menu.copy_mcp">复制 MCP 配置</span>
-            <span class="menu-hint" id="mcp-copy-hint" data-i18n="menu.mcp_hint">AI 捏猫</span>
+          <button class="menu-item" data-action="toggle-autostart">
+            <span data-i18n="menu.toggle_autostart">开机自动启动</span>
+            <span class="menu-check" id="chk-autostart"></span>
           </button>
-
-          <div class="menu-sep"></div>
-
           <button class="menu-item" data-action="desktop-shortcut" id="btn-desktop-shortcut">
             <span data-i18n="menu.desktop_shortcut">创建桌面图标</span>
             <span class="menu-hint" id="shortcut-hint">KuroCat</span>
@@ -196,7 +200,7 @@
 
       <div class="tab-footer">
         <button class="footer-btn" data-action="check-update" id="btn-check-update" type="button">
-          <span id="update-hint">检查更新 v5.1.1</span>
+          <span id="update-hint">检查更新 v5.1.2</span>
         </button>
         <button class="footer-btn danger" data-action="quit" data-i18n="menu.quit" type="button">退出</button>
       </div>

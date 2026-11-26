@@ -91,10 +91,11 @@ let settings: AppSettings = {
 let catList: CatSkinConfig[] = [...DEFAULT_BUILTIN_CATS];
 let resolvedBackendLocale: string | null = null;
 let sliderDragging = false;
-let currentAppVersion = '5.1.1';
+let currentAppVersion = '5.1.2';
 let cachedUpdateInfo: UpdateInfo | null = null;
 let updateBusy = false;
 let activeTab: MenuTabId = 'appearance';
+let settingsPatchSeq = 0;
 
 const menuEl = document.getElementById('context-menu') as HTMLDivElement;
 const tabBodyEl = document.getElementById('menu-tab-body') as HTMLDivElement | null;
@@ -179,7 +180,9 @@ function renderBreedPills(): void {
     btn.type = 'button';
     btn.className = 'breed-pill';
     btn.dataset.breed = cat.id;
-    btn.textContent = formatBreedPillLabel(cat);
+    const label = formatBreedPillLabel(cat);
+    btn.textContent = label;
+    btn.title = label;
     const accent = cat.accentColor || (cat.id === 'ragdoll' ? '#7ac7ff' : '#c8f538');
     btn.style.setProperty('--pill-accent', accent);
     btn.classList.toggle('active', cat.id === settings.catBreed);
@@ -215,7 +218,11 @@ function syncUI(): void {
   }
   const mcpHint = document.getElementById('mcp-copy-hint');
   if (mcpHint && !mcpHint.classList.contains('copied')) {
-    mcpHint.textContent = t('menu.mcp_hint');
+    mcpHint.textContent = t('menu.copy_mcp');
+  }
+  const hooksHint = document.getElementById('hooks-copy-hint');
+  if (hooksHint && !hooksHint.classList.contains('copied')) {
+    hooksHint.textContent = t('menu.copy_hooks');
   }
 
   if (!sliderDragging) {
@@ -275,6 +282,10 @@ function syncUI(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-collar]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.collar === collarColor);
   });
+  const renderModeRowEl = document.getElementById('render-mode-row');
+  if (renderModeRowEl) {
+    renderModeRowEl.classList.toggle('hidden', settings.catBreed === 'dafeiyu');
+  }
   const collarRowEl = document.getElementById('collar-row');
   if (collarRowEl) {
     collarRowEl.classList.toggle('hidden', renderMode === '2d' || settings.catBreed === 'dafeiyu');
@@ -304,10 +315,13 @@ function syncUI(): void {
 }
 
 async function applySettingsPatch(patch: Partial<AppSettings>): Promise<void> {
+  const seq = ++settingsPatchSeq;
   settings = { ...settings, ...patch };
   syncUI();
   try {
-    settings = await invoke<AppSettings>('update_settings', { patch: settings });
+    const updated = await invoke<AppSettings>('update_settings', { patch: settings });
+    if (seq !== settingsPatchSeq) return;
+    settings = updated;
     syncUI();
   } catch (err) {
     console.error('Failed to update settings:', err);
@@ -338,12 +352,30 @@ async function copyMcpConfig(): Promise<void> {
       hint.textContent = t('menu.copied_hint');
       hint.classList.add('copied');
       setTimeout(() => {
-        hint.textContent = t('menu.mcp_hint');
+        hint.textContent = t('menu.copy_mcp');
         hint.classList.remove('copied');
       }, 1800);
     }
   } catch (err) {
     console.error('Failed to copy MCP config:', err);
+  }
+}
+
+async function copyAgentHooksConfig(): Promise<void> {
+  const hint = document.getElementById('hooks-copy-hint');
+  try {
+    const jsonText = await invoke<string>('get_agent_hooks_config');
+    await copyText(jsonText);
+    if (hint) {
+      hint.textContent = t('menu.copied_hint');
+      hint.classList.add('copied');
+      setTimeout(() => {
+        hint.textContent = t('menu.copy_hooks');
+        hint.classList.remove('copied');
+      }, 1800);
+    }
+  } catch (err) {
+    console.error('Failed to copy Agent hooks config:', err);
   }
 }
 
@@ -443,6 +475,160 @@ async function bootstrap(): Promise<void> {
     if (shortcutBtn) shortcutBtn.classList.add('hidden');
   }
 
+  let resolveInitReady!: () => void;
+  const initReadyPromise = new Promise<void>((resolve) => {
+    resolveInitReady = resolve;
+  });
+
+  // Register menu click delegation immediately so fast clicks right after side-menu
+  // recreation (post 25s idle destroy) are queued behind initial IPC load rather than dropped.
+  menuEl.addEventListener('click', (e) => {
+    const tabBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tab]');
+    if (tabBtn) {
+      const next = tabBtn.dataset.tab;
+      if (next === 'appearance' || next === 'system') {
+        switchTab(next);
+      }
+      return;
+    }
+
+    const target = (e.target as HTMLElement).closest<HTMLElement>(
+      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang]',
+    );
+    if (!target) return;
+
+    void initReadyPromise.then(() => {
+      const fpsAttr = target.dataset.fpscap;
+      if (fpsAttr === '0' || fpsAttr === '30') {
+        void applySettingsPatch({ fpsCap: fpsAttr === '30' ? 30 : 0 });
+        return;
+      }
+
+      const langAttr = target.dataset.lang;
+      if (langAttr) {
+        void applySettingsPatch({ language: normalizeLanguageSetting(langAttr) });
+        return;
+      }
+
+      const headphoneAttr = target.dataset.headphonemode;
+      if (headphoneAttr === 'auto' || headphoneAttr === 'on' || headphoneAttr === 'off') {
+        void applySettingsPatch({ headphoneMode: headphoneAttr });
+        return;
+      }
+
+      const renderModeAttr = target.dataset.rendermode;
+      if (renderModeAttr === '2d' || renderModeAttr === '3d') {
+        void applySettingsPatch({ renderMode: renderModeAttr });
+        return;
+      }
+
+      const collarAttr = target.dataset.collar;
+      if (
+        collarAttr === 'none' ||
+        collarAttr === 'red' ||
+        collarAttr === 'blue' ||
+        collarAttr === 'pink' ||
+        collarAttr === 'green'
+      ) {
+        void applySettingsPatch({ collarColor: collarAttr });
+        return;
+      }
+
+      const kbLayoutAttr = target.dataset.kblayout;
+      if (kbLayoutAttr === '65' || kbLayoutAttr === '108') {
+        void applySettingsPatch({ keyboardLayout: kbLayoutAttr });
+        return;
+      }
+
+      const kbOrientAttr = target.dataset.kborient;
+      if (kbOrientAttr === 'cat' || kbOrientAttr === 'viewer') {
+        void applySettingsPatch({ keyboardOrientation: kbOrientAttr });
+        return;
+      }
+
+      const tailModeAttr = target.dataset.tailmode;
+      if (
+        tailModeAttr === 'smart' ||
+        tailModeAttr === 'custom' ||
+        tailModeAttr === 'edge' ||
+        tailModeAttr === 'off'
+      ) {
+        void applySettingsPatch({ tailKeyMode: tailModeAttr });
+        return;
+      }
+
+      const breedAttr = target.dataset.breed;
+      if (breedAttr) {
+        void applySettingsPatch({ catBreed: breedAttr });
+        return;
+      }
+
+      switch (target.dataset.action) {
+        case 'toggle-privacy':
+          void applySettingsPatch({ privacyPasswordGuard: !(settings.privacyPasswordGuard !== false) });
+          break;
+        case 'toggle-bubbles':
+          void applySettingsPatch({ showKeyBubbles: !settings.showKeyBubbles });
+          break;
+        case 'toggle-lock':
+          void applySettingsPatch({ clickThroughLocked: !settings.clickThroughLocked });
+          closeMenu();
+          break;
+        case 'toggle-sound':
+          void applySettingsPatch({ soundEnabled: !settings.soundEnabled });
+          break;
+        case 'toggle-top':
+          void applySettingsPatch({ alwaysOnTop: !settings.alwaysOnTop });
+          break;
+        case 'toggle-autostart':
+          void applySettingsPatch({ autostart: !settings.autostart });
+          break;
+        case 'toggle-obs': {
+          const nextObs = !settings.obsEnabled;
+          void applySettingsPatch({
+            obsEnabled: nextObs,
+            obsHidePet: nextObs ? settings.obsHidePet : false,
+          });
+          break;
+        }
+        case 'copy-obs':
+          void copyObsUrl();
+          break;
+        case 'toggle-obs-hide':
+          void applySettingsPatch({ obsHidePet: !settings.obsHidePet });
+          if (!settings.obsHidePet) {
+            closeMenu();
+          }
+          break;
+        case 'toggle-mcp':
+          void applySettingsPatch({ mcpEnabled: !settings.mcpEnabled });
+          break;
+        case 'copy-mcp':
+          void copyMcpConfig();
+          break;
+        case 'copy-hooks':
+          void copyAgentHooksConfig();
+          break;
+        case 'open-tail-picker':
+          void invoke('open_tail_picker_from_menu');
+          break;
+        case 'desktop-shortcut':
+          void createDesktopShortcut();
+          break;
+        case 'reset-pos':
+          void invoke('reset_position');
+          closeMenu();
+          break;
+        case 'check-update':
+          void triggerManualUpdateCheck();
+          break;
+        case 'quit':
+          void invoke('quit_app');
+          break;
+      }
+    });
+  });
+
   let inTauri = true;
   try {
     const [loadedSettings, loadedCats, ver, cachedUpd, resolvedLoc] = await Promise.all([
@@ -488,6 +674,7 @@ async function bootstrap(): Promise<void> {
   syncUI();
   renderFooterUpdateState();
   switchTab(activeTab);
+  resolveInitReady();
 
   if (inTauri) {
     const isWin7 = await invoke<boolean>('is_win7_ulw_mode').catch(() => false);
@@ -531,148 +718,6 @@ async function bootstrap(): Promise<void> {
       void applySettingsPatch({ scale: 1.0 });
     });
   }
-
-  menuEl.addEventListener('click', (e) => {
-    const tabBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tab]');
-    if (tabBtn) {
-      const next = tabBtn.dataset.tab;
-      if (next === 'appearance' || next === 'system') {
-        switchTab(next);
-      }
-      return;
-    }
-
-    const target = (e.target as HTMLElement).closest<HTMLElement>(
-      '[data-action], [data-breed], [data-rendermode], [data-collar], [data-headphonemode], [data-kblayout], [data-kborient], [data-tailmode], [data-fpscap], [data-lang]',
-    );
-    if (!target) return;
-
-    const fpsAttr = target.dataset.fpscap;
-    if (fpsAttr === '0' || fpsAttr === '30') {
-      void applySettingsPatch({ fpsCap: fpsAttr === '30' ? 30 : 0 });
-      return;
-    }
-
-    const langAttr = target.dataset.lang;
-    if (langAttr) {
-      void applySettingsPatch({ language: normalizeLanguageSetting(langAttr) });
-      return;
-    }
-
-    const headphoneAttr = target.dataset.headphonemode;
-    if (headphoneAttr === 'auto' || headphoneAttr === 'on' || headphoneAttr === 'off') {
-      void applySettingsPatch({ headphoneMode: headphoneAttr });
-      return;
-    }
-
-    const renderModeAttr = target.dataset.rendermode;
-    if (renderModeAttr === '2d' || renderModeAttr === '3d') {
-      void applySettingsPatch({ renderMode: renderModeAttr });
-      return;
-    }
-
-    const collarAttr = target.dataset.collar;
-    if (
-      collarAttr === 'none' ||
-      collarAttr === 'red' ||
-      collarAttr === 'blue' ||
-      collarAttr === 'pink' ||
-      collarAttr === 'green'
-    ) {
-      void applySettingsPatch({ collarColor: collarAttr });
-      return;
-    }
-
-    const kbLayoutAttr = target.dataset.kblayout;
-    if (kbLayoutAttr === '65' || kbLayoutAttr === '108') {
-      void applySettingsPatch({ keyboardLayout: kbLayoutAttr });
-      return;
-    }
-
-    const kbOrientAttr = target.dataset.kborient;
-    if (kbOrientAttr === 'cat' || kbOrientAttr === 'viewer') {
-      void applySettingsPatch({ keyboardOrientation: kbOrientAttr });
-      return;
-    }
-
-    const tailModeAttr = target.dataset.tailmode;
-    if (
-      tailModeAttr === 'smart' ||
-      tailModeAttr === 'custom' ||
-      tailModeAttr === 'edge' ||
-      tailModeAttr === 'off'
-    ) {
-      void applySettingsPatch({ tailKeyMode: tailModeAttr });
-      return;
-    }
-
-    const breedAttr = target.dataset.breed;
-    if (breedAttr) {
-      void applySettingsPatch({ catBreed: breedAttr });
-      return;
-    }
-
-    switch (target.dataset.action) {
-      case 'toggle-privacy':
-        void applySettingsPatch({ privacyPasswordGuard: !(settings.privacyPasswordGuard !== false) });
-        break;
-      case 'toggle-bubbles':
-        void applySettingsPatch({ showKeyBubbles: !settings.showKeyBubbles });
-        break;
-      case 'toggle-lock':
-        void applySettingsPatch({ clickThroughLocked: !settings.clickThroughLocked });
-        closeMenu();
-        break;
-      case 'toggle-sound':
-        void applySettingsPatch({ soundEnabled: !settings.soundEnabled });
-        break;
-      case 'toggle-top':
-        void applySettingsPatch({ alwaysOnTop: !settings.alwaysOnTop });
-        break;
-      case 'toggle-autostart':
-        void applySettingsPatch({ autostart: !settings.autostart });
-        break;
-      case 'toggle-obs': {
-        const nextObs = !settings.obsEnabled;
-        void applySettingsPatch({
-          obsEnabled: nextObs,
-          obsHidePet: nextObs ? settings.obsHidePet : false,
-        });
-        break;
-      }
-      case 'copy-obs':
-        void copyObsUrl();
-        break;
-      case 'toggle-obs-hide':
-        void applySettingsPatch({ obsHidePet: !settings.obsHidePet });
-        if (!settings.obsHidePet) {
-          closeMenu();
-        }
-        break;
-      case 'toggle-mcp':
-        void applySettingsPatch({ mcpEnabled: !settings.mcpEnabled });
-        break;
-      case 'copy-mcp':
-        void copyMcpConfig();
-        break;
-      case 'open-tail-picker':
-        void invoke('open_tail_picker_from_menu');
-        break;
-      case 'desktop-shortcut':
-        void createDesktopShortcut();
-        break;
-      case 'reset-pos':
-        void invoke('reset_position');
-        closeMenu();
-        break;
-      case 'check-update':
-        void triggerManualUpdateCheck();
-        break;
-      case 'quit':
-        void invoke('quit_app');
-        break;
-    }
-  });
 
   if (!inTauri) return;
 

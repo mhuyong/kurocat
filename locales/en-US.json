@@ -61,6 +61,8 @@
     "toggle_mcp": "Enable MCP Server",
     "copy_mcp": "Copy MCP Config",
     "mcp_hint": "AI Pets",
+    "copy_hooks": "AI Setup Prompt",
+    "hooks_hint": "AI Companion",
     "copied_hint": "Copied ✓",
     "created_hint": "Created ✓",
     "desktop_shortcut": "Create Desktop Shortcut",

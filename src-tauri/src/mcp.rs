@@ -549,6 +549,26 @@ pub fn run_hook_cli(args: &[String]) {
     };
 
     let settings = load_settings();
+    if crate::ai_typing::debug_enabled() {
+        let ti = raw_payload.get("tool_input").or_else(|| raw_payload.get("toolInput"));
+        let tool = raw_payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+        crate::ai_typing::debug_log(
+            "hook.in",
+            &format!(
+                "event={} tool={} has_input={} mcp_enabled={} show_ai_typing={} why_no_text={}",
+                raw_payload
+                    .get("hook_event_name")
+                    .or_else(|| raw_payload.get("hookEventName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?"),
+                clean_short_text(tool, 36).unwrap_or_default(),
+                ti.is_some(),
+                settings.mcp_enabled,
+                settings.show_ai_typing,
+                crate::ai_typing::diagnose(tool, ti),
+            ),
+        );
+    }
     if settings.mcp_enabled {
         let port = port_override.unwrap_or(settings.mcp_port);
         if let Some(ev) = parse_hook_payload(
@@ -558,9 +578,23 @@ pub fn run_hook_cli(args: &[String]) {
             text_hint.as_deref(),
         ) {
             if let Ok(val) = serde_json::to_value(&ev) {
-                let _ = post_loopback_json(port, "/agent/event", &val);
+                let ok = post_loopback_json(port, "/agent/event", &val);
+                crate::ai_typing::debug_log(
+                    "hook.post",
+                    &format!(
+                        "port={} ok={} status={} typed_chars={}",
+                        port,
+                        ok,
+                        ev.status.as_deref().unwrap_or("-"),
+                        ev.typed_text.as_deref().map(|t| t.chars().count()).unwrap_or(0)
+                    ),
+                );
             }
+        } else {
+            crate::ai_typing::debug_log("hook.parse", "no_event");
         }
+    } else {
+        crate::ai_typing::debug_log("hook.skip", "mcp_disabled");
     }
 
     let mut out = std::io::stdout().lock();
@@ -1348,6 +1382,9 @@ fn read_hook_body<R: BufRead>(reader: &mut R, content_length: usize, is_chunked:
 /// Parses a hook body. A truncated or malformed body still yields the event name, tool name and
 /// status found in it (no tool input), so it gives the normal status event. None: nothing usable.
 pub fn parse_hook_body(buf: &[u8]) -> Option<Value> {
+    // A UTF-8 byte order mark (PowerShell / .NET pipes add one) is not valid JSON: without
+    // this strip the tool input was lost and only the plain status event came through.
+    let buf = buf.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(buf);
     if buf.iter().all(|b| b.is_ascii_whitespace()) {
         return Some(json!({}));
     }
@@ -1605,6 +1642,19 @@ fn handle_http_conn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A hook body with a UTF-8 BOM (what a PowerShell/.NET pipe sends) still parses, so the
+    /// tool input (and with it the Thai or English text) is not lost.
+    #[test]
+    fn hook_body_with_utf8_bom_keeps_tool_input() {
+        let body = r#"{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"content":"สวัสดี"}}"#;
+        let mut with_bom = vec![0xEF, 0xBB, 0xBF];
+        with_bom.extend_from_slice(body.as_bytes());
+        for buf in [body.as_bytes().to_vec(), with_bom] {
+            let v = parse_hook_body(&buf).unwrap();
+            assert_eq!(v["tool_input"]["content"], "สวัสดี");
+        }
+    }
 
     #[test]
     fn parses_antigravity_lifecycle_hooks() {

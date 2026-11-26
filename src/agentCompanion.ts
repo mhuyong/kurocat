@@ -66,6 +66,11 @@ export interface AgentCompanionOptions {
   allowSound: () => boolean;
   /** False on surfaces that must never show the AI's real text (the OBS overlay). */
   allowTypedText?: () => boolean;
+  /**
+   * Opt-in debug log (the app's agent-debug.flag file). Gets a stage and codes/counts only,
+   * never any text.
+   */
+  debugLog?: (stage: string, detail: string) => void;
 }
 
 /** Pace of real-text typing: one character every 70-120 ms. */
@@ -78,6 +83,7 @@ export class AgentCompanionController {
   private readonly is3DTarget: () => boolean;
   private readonly allowSound: () => boolean;
   private readonly allowTypedText: () => boolean;
+  private readonly debugLog: (stage: string, detail: string) => void;
 
   private activeStatus: AgentStatusKind = 'idle';
   private privacyPaused = false;
@@ -99,6 +105,7 @@ export class AgentCompanionController {
     this.is3DTarget = opts.is3DTarget;
     this.allowSound = opts.allowSound;
     this.allowTypedText = opts.allowTypedText ?? (() => true);
+    this.debugLog = opts.debugLog ?? (() => {});
   }
 
   public setPrivacyMode(active: boolean): void {
@@ -138,7 +145,14 @@ export class AgentCompanionController {
 
   public handleEvent(ev: AgentCompanionEvent): void {
     if (!ev || typeof ev !== 'object') return;
-    if (this.privacyPaused) return;
+    if (this.privacyPaused) {
+      this.debugLog('ui.drop', `reason=privacy_paused kind=${ev.kind} status=${ev.status ?? '-'}`);
+      return;
+    }
+    this.debugLog(
+      'ui.event',
+      `kind=${ev.kind} status=${ev.status ?? '-'} action=${ev.action ?? '-'} typed_chars=${[...(ev.typedText ?? '')].length} bubble_was=${this.bubbleEl?.classList.contains('hidden') ? 'hidden' : 'shown'}`,
+    );
 
     this.clearTtlTimer();
     const target = this.getTarget();
@@ -297,16 +311,23 @@ export class AgentCompanionController {
    */
   private queueTypedText(text: string | undefined): boolean {
     if (!text || this.privacyPaused || !this.allowTypedText()) {
+      this.debugLog(
+        'ui.queue',
+        `dropped has_text=${Boolean(text)} privacy=${this.privacyPaused} allow=${this.allowTypedText()}`,
+      );
       // A new event replaces whatever is still queued, also when it has no text to type.
       this.typedQueue = [];
       return false;
     }
     if (text === this.queuedText && this.typedQueue.length > 0) return true;
     const keys: TypedKey[] = [];
+    let skipped = 0;
     for (const ch of text) {
       const key = keyForChar(ch);
       if (key) keys.push(key);
+      else skipped += 1;
     }
+    this.debugLog('ui.queue', `keys=${keys.length} skipped_no_key=${skipped}`);
     this.queuedText = text;
     this.typedQueue = keys;
     if (keys.length > 0 && this.autoTyping) {
@@ -452,6 +473,7 @@ export class AgentCompanionController {
     this.clearTtlTimer();
     this.ttlTimer = window.setTimeout(() => {
       this.ttlTimer = null;
+      this.debugLog('ui.ttl_clear', `after_ms=${ms}`);
       this.activeStatus = 'idle';
       this.stopAutoTyping();
       this.hideBubble();

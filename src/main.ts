@@ -213,6 +213,9 @@ const agentCompanion = new AgentCompanionController({
   is3DTarget: () => Boolean(active3d && engine3d),
   allowSound: () => settings.soundEnabled !== false,
   allowTypedText: () => settings.showAiTyping === true,
+  debugLog: (stage, detail) => {
+    void invoke('agent_debug_log', { stage, detail }).catch(() => {});
+  },
 });
 
 window.addEventListener('resize', () => engine3d?.resize());

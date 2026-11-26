@@ -98,3 +98,33 @@ test('privacy guard starts mid-typing: real text dropped and not resumed afterwa
   assert.ok(after.length > 0, 'quiet pretend-typing continues');
   stop(ctl);
 });
+
+test('Thai typed text: one keycap per Thai character, marks on a dotted circle, debug log has no text', async () => {
+  const allow = { typedText: true };
+  const logs: string[] = [];
+  const presses: Press[] = [];
+  const target = {
+    onKeyDown(vk: number, _r?: boolean, opts?: KeyEventOptions) {
+      presses.push({ vk, bubble: opts?.bubble, at: performance.now() });
+    },
+    onKeyUp() {},
+    triggerCuriousDemo() {},
+    triggerCrossDemo() {},
+    triggerSleepDemo() {},
+  };
+  const ctl = new AgentCompanionController({
+    bubbleEl: null,
+    getTarget: () => target,
+    is3DTarget: () => false,
+    allowSound: () => false,
+    allowTypedText: () => allow.typedText,
+    debugLog: (stage, detail) => logs.push(`${stage} ${detail}`),
+  });
+  ctl.handleEvent({ kind: 'status', status: 'working', autoType: true, typedText: 'สวัสดี', ttlMs: 30_000 });
+  await sleep(1100);
+  const bubbles = presses.filter((p) => p.bubble).map((p) => p.bubble);
+  assert.deepEqual(bubbles, ['ส', 'ว', '◌ั', 'ส', 'ด', '◌ี']);
+  assert.ok(logs.some((l) => l.startsWith('ui.queue keys=6 skipped_no_key=0')), logs.join('\n'));
+  assert.ok(!logs.some((l) => l.includes('สวัสดี')), 'the log never holds the text');
+  stop(ctl);
+});

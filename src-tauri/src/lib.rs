@@ -309,6 +309,18 @@ fn get_resolved_locale(state: State<'_, AppState>) -> String {
     i18n::effective_locale(&lang).to_string()
 }
 
+/// Front-end stage of the opt-in AI-event debug log (see `ai_typing::debug_log`). No-op unless
+/// the `agent-debug.flag` file exists. The front end sends codes and counts only.
+#[tauri::command]
+fn agent_debug_log(stage: String, detail: String) {
+    let stage: String = stage
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_')
+        .take(40)
+        .collect();
+    ai_typing::debug_log(&stage, &detail);
+}
+
 #[tauri::command]
 fn trim_idle_memory() {
     #[cfg(windows)]
@@ -2918,7 +2930,20 @@ pub fn run() {
                 move |mut ev: mcp::AgentCompanionEvent| {
                     // Events from `--hook` or `/agent/event` may carry a typed text already:
                     // setting, secret filter and trim apply again here.
+                    let typed_in = ev.typed_text.as_deref().map(|t| t.chars().count()).unwrap_or(0);
                     ev.typed_text = ev.typed_text.as_deref().and_then(ai_typing::sanitize_forwarded);
+                    ai_typing::debug_log(
+                        "app.event",
+                        &format!(
+                            "kind={} status={} action={} typed_in={} typed_out={} show_ai_typing={}",
+                            ev.kind,
+                            ev.status.as_deref().unwrap_or("-"),
+                            ev.action.as_deref().unwrap_or("-"),
+                            typed_in,
+                            ev.typed_text.as_deref().map(|t| t.chars().count()).unwrap_or(0),
+                            ai_typing::enabled()
+                        ),
+                    );
                     let _ = agent_handle.emit("kuro-agent-event", &ev);
                     // The OBS overlay is a broadcast surface: it never gets the AI's real text.
                     ev.typed_text = None;
@@ -2989,6 +3014,7 @@ pub fn run() {
             get_settings,
             get_resolved_locale,
             trim_idle_memory,
+            agent_debug_log,
             get_cats,
             get_game_active,
             get_input_lang,

@@ -88,6 +88,79 @@ pub fn extract_typed_text(tool_name: &str, tool_input: Option<&Value>) -> Option
     extract_typed_text_unchecked(tool_name, tool_input?)
 }
 
+/// Why `extract_typed_text` gave nothing, as a short code for the opt-in debug log (never the
+/// text itself): "disabled", "no_input", "other_tool", "no_field", "secret_path",
+/// "secret_filter:<ids>", "empty" or "ok".
+pub fn diagnose(tool_name: &str, tool_input: Option<&Value>) -> String {
+    diagnose_with(enabled(), tool_name, tool_input)
+}
+
+fn diagnose_with(on: bool, tool_name: &str, tool_input: Option<&Value>) -> String {
+    if !on {
+        return "disabled".into();
+    }
+    let Some(input) = tool_input else { return "no_input".into() };
+    let Some(family) = tool_family(tool_name) else { return "other_tool".into() };
+    let Some(raw) = raw_field(family, input) else { return "no_field".into() };
+    if family == ToolFamily::Edit {
+        let path = str_field(input, "file_path")
+            .or_else(|| str_field(input, "notebook_path"))
+            .or_else(|| str_field(input, "path"))
+            .unwrap_or("");
+        if is_secret_path(path) {
+            return "secret_path".into();
+        }
+    }
+    let scan: String = raw.chars().take(FILTER_SCAN_CHARS).collect();
+    if looks_secret(&scan) {
+        let mut ids: Vec<String> = round2_hits(&scan).iter().map(|s| s.to_string()).collect();
+        if ids.is_empty() {
+            ids.push("base".into());
+        }
+        return format!("secret_filter:{}", ids.join(","));
+    }
+    if trim_typed(&scan).is_none() {
+        return "empty".into();
+    }
+    "ok".into()
+}
+
+// ---- Opt-in debug log ------------------------------------------------------------------
+// Off by default. It is on only while the file `agent-debug.flag` exists in the settings folder.
+// It records where an AI event goes (stage + short codes + counts), never any text.
+
+const DEBUG_LOG_MAX_BYTES: u64 = 256 * 1024;
+
+fn debug_flag_path() -> std::path::PathBuf {
+    crate::config::app_data_dir().join("agent-debug.flag")
+}
+
+pub fn debug_enabled() -> bool {
+    debug_flag_path().exists()
+}
+
+/// Appends `<epoch_ms> pid=<pid> <stage> <detail>` to `agent-debug.log` when the flag file
+/// exists. `detail` must only hold codes, names and counts: never typed text or tool input.
+pub fn debug_log(stage: &str, detail: &str) {
+    if !debug_enabled() {
+        return;
+    }
+    use std::io::Write;
+    let path = crate::config::app_data_dir().join("agent-debug.log");
+    if std::fs::metadata(&path).map(|m| m.len() > DEBUG_LOG_MAX_BYTES).unwrap_or(false) {
+        let _ = std::fs::remove_file(&path);
+    }
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    // One line per entry, whatever the caller passed.
+    let detail: String = detail.chars().filter(|c| !c.is_control()).take(300).collect();
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{ms} pid={} {stage} {detail}", std::process::id());
+    }
+}
+
 fn extract_typed_text_unchecked(tool_name: &str, input: &Value) -> Option<String> {
     let family = tool_family(tool_name)?;
     let raw = raw_field(family, input)?;
@@ -674,6 +747,58 @@ mod tests {
         }
         assert_eq!(typed("Write", json!({"file_path": "/app/.env", "content": "hello"})), None);
         assert_eq!(typed("Edit", json!({"file_path": "config/credentials.json", "new_string": "hello"})), None);
+    }
+
+    /// Thai is not a reason to drop: Thai prose, Thai with Latin code words, Thai in a Bash
+    /// command and in a Write body all pass the filter and are typed (up to 80 characters).
+    #[test]
+    fn thai_text_types() {
+        for t in [
+            "แก้ไขไฟล์ตามที่ขอเรียบร้อยแล้วครับ",
+            "echo สวัสดีครับ",
+            "git commit -m \"แก้บั๊กการแสดงผล\"",
+            "// ตรวจสอบว่าผู้ใช้ล็อกอินอยู่หรือไม่\nconst a = 1;",
+            "# คำอธิบายการใช้งาน: ติดตั้งแล้วรัน npm run dev",
+            "ตั้งค่าคีย์ลัดใหม่",
+        ] {
+            assert!(!looks_secret(t), "must type: {t}");
+            let out = typed("Write", json!({"file_path": "notes.md", "content": t})).unwrap();
+            assert!(out.chars().count() <= MAX_TYPED_CHARS);
+            assert!(out.chars().any(|c| ('\u{0E00}'..='\u{0E7F}').contains(&c)), "{t}");
+            assert!(typed("Bash", json!({"command": t})).is_some(), "{t}");
+        }
+        // Long Thai text is cut by characters (a byte cut would split a 3-byte character).
+        let long = "ก".repeat(500);
+        assert_eq!(
+            typed("Write", json!({"file_path": "a.md", "content": long})).unwrap().chars().count(),
+            MAX_TYPED_CHARS
+        );
+    }
+
+    /// `diagnose` names the reason a text is not typed, never the text.
+    #[test]
+    fn diagnose_reasons() {
+        assert_eq!(diagnose_with(true, "Read", Some(&json!({"command": "ls"}))), "other_tool");
+        assert_eq!(diagnose_with(true, "Bash", None), "no_input");
+        assert_eq!(diagnose_with(true, "Bash", Some(&json!({}))), "no_field");
+        assert_eq!(diagnose_with(true, "Write", Some(&json!({"file_path": ".env", "content": "x"}))), "secret_path");
+        assert!(diagnose_with(true, "Bash", Some(&json!({"command": "export API_KEY=x"}))).starts_with("secret_filter:"));
+        assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": " \n "}))), "empty");
+        assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": "สวัสดี"}))), "ok");
+        assert_eq!(diagnose_with(false, "Bash", Some(&json!({"command": "ls"}))), "disabled");
+    }
+
+    /// Ordinary words in the base rule's list ("auth", "session", "token", "cookie") followed by
+    /// any word drop the whole text, in English and in Thai alike (found while debugging "the
+    /// keycaps do not show"). Documents today's behaviour; the opt-in debug log shows it as
+    /// `why_no_text=secret_filter:base`.
+    #[test]
+    fn known_over_drop_is_language_independent() {
+        for t in ["fix auth bug in login flow", "แก้ไข auth middleware ให้ถูกต้อง", "ตรวจสอบ session ของผู้ใช้"] {
+            assert!(looks_secret(t), "{t}");
+        }
+        assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": "fix auth bug"}))), "secret_filter:base");
+        assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": "ตรวจสอบ session ของผู้ใช้"}))), "secret_filter:base");
     }
 
     /// These must still type (spec + qa-lead acceptance).

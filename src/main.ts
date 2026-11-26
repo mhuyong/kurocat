@@ -20,6 +20,13 @@ import {
 } from './keyboardLayout';
 import type { CollarColorId, KuroCatEngine3D } from './catEngine3d';
 import {
+  inputLangBubbleLabel,
+  noteKeyForShift,
+  onInputLangChange,
+  resetShift,
+  setInputLang,
+} from './inputLang';
+import {
   applyDomTranslations,
   isMacPlatform,
   isWindowsPlatform,
@@ -1195,8 +1202,28 @@ async function bootstrap(): Promise<void> {
     if (preset) applyTailPreset(preset);
   });
 
+  // Keycaps and bubbles follow the active Windows input language (no key data in this event).
+  onInputLangChange((lang, prev) => {
+    engine.refreshKeyLegends();
+    engine3d?.refreshKeyLegends();
+    if (prev === null || tailPickerOpen) return;
+    const label = inputLangBubbleLabel(lang);
+    if (active3d && engine3d) engine3d.showInputLangBubble(label);
+    else engine.showInputLangBubble(label);
+  });
+  await listen<{ lang: string }>('kuro-input-lang', (ev) => {
+    setInputLang(ev.payload);
+  });
+  void invoke<string | null>('get_input_lang')
+    .then((lang) => setInputLang(lang))
+    .catch(() => {});
+  window.addEventListener('blur', () => resetShift());
+
   await listen<InputEvent>('kuro-input', (ev) => {
     const p = ev.payload;
+    if (p.kind === 'keyDown' || p.kind === 'keyUp') {
+      noteKeyForShift(p.vk, p.kind === 'keyDown');
+    }
     switch (p.kind) {
       case 'keyDown':
         agentCompanion.notifyRealUserInput();
@@ -1244,6 +1271,7 @@ async function bootstrap(): Promise<void> {
 
   await listen<boolean>('kuro-privacy', (ev) => {
     privacyActive = Boolean(ev.payload);
+    resetShift();
     engine.setPrivacyMode(privacyActive);
     engine3d?.setPrivacyMode(privacyActive);
     agentCompanion.setPrivacyMode(privacyActive);

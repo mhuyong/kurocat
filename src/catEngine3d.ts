@@ -5,7 +5,13 @@ import {
   type CatEarShape,
   type CatSkinConfig,
 } from './catSkins';
-import type { KeyboardLayoutId } from './keyboardLayout';
+import {
+  THAI_LEGEND_FONTS,
+  VK_GRAVE,
+  hasThaiText,
+  type KeyboardLayoutId,
+} from './keyboardLayout';
+import { GRAVE_BUBBLE_HOLD_MS, followsInputLang, keyBubbleLabel } from './inputLang';
 import type { KeyboardOrientation, TailKeyMode } from './catEngine';
 import { DEFAULT_TAIL_KEY_IDS } from './catEngine';
 import { catAudio } from './audio';
@@ -64,6 +70,8 @@ interface Popup3D {
   t0: number;
   upAt: number | null;
   side: -1 | 1;
+  /** VK that spawned it (0 for none), so a ` ~ bubble can give way to the language bubble. */
+  fromVk: number;
 }
 
 interface Fx3D {
@@ -187,7 +195,9 @@ function getPopupTexture(text: string): { tex: THREE.CanvasTexture; aspect: numb
   }
 
   const h = 110;
-  const font = '700 48px "Segoe UI", system-ui, sans-serif';
+  const font = hasThaiText(text)
+    ? `700 48px ${THAI_LEGEND_FONTS}`
+    : '700 48px "Segoe UI", system-ui, sans-serif';
   const probe = document.createElement('canvas').getContext('2d')!;
   probe.font = font;
   const w = Math.max(114, Math.ceil(probe.measureText(text).width) + 52);
@@ -1965,6 +1975,12 @@ export class KuroCatEngine3D {
     }
   }
 
+  /** Re-draws the keycap legends after an input-language switch (the board rebuilds once). */
+  public refreshKeyLegends(): void {
+    this.desk.rebuildBoard(this.desk.getLayoutId(), this.desk.getOrientation());
+    this.wakeRendering();
+  }
+
   public setKeyboardConfig(layout: KeyboardLayoutId, orient: KeyboardOrientation): void {
     this.desk.rebuildBoard(layout, orient);
     this.paws.L.keyId = null;
@@ -2006,6 +2022,7 @@ export class KuroCatEngine3D {
 
   public setPrivacyMode(active: boolean): void {
     this.privacyMode = active;
+    if (active) this.cancelHeldGraveBubble();
     if (active) {
       this.desk.releaseAllKeys();
       this.paws.L.down = false;
@@ -2118,8 +2135,9 @@ export class KuroCatEngine3D {
           this.tailKeyMode !== 'off' &&
           (this.desk.isRightEdgeTailKey(k.spec.id) ||
             (this.tailKeyMode === 'smart' && (k.spec.id === 'space' || k.spec.id === 'enter')));
+    const bubbleLabel = keyBubbleLabel(vk, k.spec) || k.spec.label || k.spec.id;
     if (useTail) {
-      this.triggerTailKey(k.spec.id, k.spec.bubble || k.spec.label || k.spec.id);
+      this.triggerTailKey(k.spec.id, bubbleLabel, vk);
       return;
     }
 
@@ -2139,7 +2157,7 @@ export class KuroCatEngine3D {
     this.sSquash.kick(0.32);
     this.sPitch.kick(0.75);
     if (this.showKeyBubbles) {
-      this.spawnKeyPopup(k.spec.id, k.spec.bubble || k.spec.label || k.spec.id, paw.side);
+      this.spawnKeyPopup(k.spec.id, bubbleLabel, paw.side, vk);
     }
   }
 
@@ -2362,7 +2380,7 @@ export class KuroCatEngine3D {
     this.lastPoke = this.elapsed;
   }
 
-  private triggerTailKey(keyId: string, bubbleLabel: string): void {
+  private triggerTailKey(keyId: string, bubbleLabel: string, vk = 0): void {
     this.tailTap.keyId = keyId;
     this.tailTap.from = this.tailTap.reach;
     this.tailTap.t0 = this.elapsed;
@@ -2372,14 +2390,64 @@ export class KuroCatEngine3D {
     this.desk.setKeyDown(keyId, true);
     this.sSquash.kick(0.24);
     if (this.showKeyBubbles) {
-      this.spawnKeyPopup(keyId, bubbleLabel, 1);
+      this.spawnKeyPopup(keyId, bubbleLabel, 1, vk);
     }
     window.setTimeout(() => {
       if (!this.tailTap.down) this.desk.setKeyDown(keyId, false);
     }, 170);
   }
 
-  private spawnKeyPopup(keyId: string, label: string, side: -1 | 1): void {
+  /**
+   * One bubble for an input-language switch ("ไทย" / "EN" / "JA") above the space bar. Not
+   * shown while password privacy is active or bubbles are off; a ` ~ bubble from the last
+   * moment is replaced, so pressing ~ to switch shows only the language.
+   */
+  private heldGraveBubbleTimer = 0;
+  private graveBubbleFlushing = false;
+
+  private cancelHeldGraveBubble(): void {
+    if (this.heldGraveBubbleTimer) {
+      window.clearTimeout(this.heldGraveBubbleTimer);
+      this.heldGraveBubbleTimer = 0;
+    }
+  }
+
+  public showInputLangBubble(label: string): void {
+    this.cancelHeldGraveBubble();
+    if (!this.showKeyBubbles || this.privacyMode || !label) return;
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const p = this.popups[i];
+      if (p.fromVk === VK_GRAVE && this.elapsed - p.t0 < 0.9) {
+        this.scene.remove(p.sprite);
+        p.sprite.material.dispose();
+        this.popups.splice(i, 1);
+      }
+    }
+    const anchor = this.desk.getKeyById('space') ? 'space' : 'enter';
+    this.spawnKeyPopup(anchor, label, 1, 0, '');
+    this.wakeRendering();
+  }
+
+  private spawnKeyPopup(
+    keyId: string,
+    label: string,
+    side: -1 | 1,
+    vk = 0,
+    ownerKeyId: string = keyId,
+  ): void {
+    if (vk === VK_GRAVE && followsInputLang() && !this.graveBubbleFlushing) {
+      // Hold the ` ~ bubble: if this press switched the input language, it is dropped.
+      this.cancelHeldGraveBubble();
+      this.heldGraveBubbleTimer = window.setTimeout(() => {
+        this.heldGraveBubbleTimer = 0;
+        if (!this.showKeyBubbles || this.privacyMode) return;
+        this.graveBubbleFlushing = true;
+        this.spawnKeyPopup(keyId, label, side, vk, ownerKeyId);
+        this.graveBubbleFlushing = false;
+        this.wakeRendering();
+      }, GRAVE_BUBBLE_HOLD_MS);
+      return;
+    }
     const clean = label.length > 6 ? label.slice(0, 6) : label;
     const { tex, aspect } = getPopupTexture(clean);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
@@ -2392,7 +2460,8 @@ export class KuroCatEngine3D {
     sprite.position.set(kp.x, kp.y + 0.14, kp.z);
     this.scene.add(sprite);
     this.popups.push({
-      keyId,
+      keyId: ownerKeyId,
+      fromVk: vk,
       sprite,
       baseW,
       baseH,

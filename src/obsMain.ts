@@ -9,6 +9,13 @@ import { AgentCompanionController, type AgentCompanionEvent } from './agentCompa
 import { DEFAULT_BUILTIN_CATS, type CatSkinConfig } from './catSkins';
 import type { KeyboardLayoutId } from './keyboardLayout';
 import type { CollarColorId, KuroCatEngine3D } from './catEngine3d';
+import {
+  inputLangBubbleLabel,
+  noteKeyForShift,
+  onInputLangChange,
+  resetShift,
+  setInputLang,
+} from './inputLang';
 
 type ObsRenderMode = '2d' | '3d';
 type ObsHeadphoneMode = 'auto' | 'on' | 'off';
@@ -40,6 +47,7 @@ interface ObsStateSnapshot {
   cats?: CatSkinConfig[];
   privacy?: boolean;
   gameActive?: boolean;
+  inputLang?: string | null;
 }
 
 const canvas = document.getElementById('obs-canvas') as HTMLCanvasElement;
@@ -222,6 +230,9 @@ function applyState(): void {
 }
 
 function handleInput(p: InputEvent): void {
+  if (p.kind === 'keyDown' || p.kind === 'keyUp') {
+    noteKeyForShift(p.vk, p.kind === 'keyDown');
+  }
   switch (p.kind) {
     case 'keyDown':
       obsAgentCompanion.notifyRealUserInput();
@@ -272,8 +283,12 @@ function connectStream(): void {
       if (snap.settings) {
         currentSettings = { ...currentSettings, ...snap.settings };
       }
+      if (typeof snap.inputLang === 'string') {
+        setInputLang(snap.inputLang);
+      }
       if (typeof snap.privacy === 'boolean') {
         privacyActive = snap.privacy;
+        resetShift();
         engine.setPrivacyMode(privacyActive);
         engine3d?.setPrivacyMode(privacyActive);
       }
@@ -306,6 +321,7 @@ function connectStream(): void {
     try {
       const active = JSON.parse((ev as MessageEvent).data) === true;
       privacyActive = active;
+      resetShift();
       engine.setPrivacyMode(active);
       engine3d?.setPrivacyMode(active);
       obsAgentCompanion.setPrivacyMode(active);
@@ -327,6 +343,12 @@ function connectStream(): void {
     } catch {}
   });
 
+  es.addEventListener('inputLang', (ev) => {
+    try {
+      setInputLang(JSON.parse((ev as MessageEvent).data));
+    } catch {}
+  });
+
   es.addEventListener('input', (ev) => {
     try {
       const payload = JSON.parse((ev as MessageEvent).data) as InputEvent;
@@ -334,6 +356,15 @@ function connectStream(): void {
     } catch {}
   });
 }
+
+onInputLangChange((lang, prev) => {
+  engine.refreshKeyLegends();
+  engine3d?.refreshKeyLegends();
+  if (prev === null) return;
+  const label = inputLangBubbleLabel(lang);
+  if (active3d && engine3d) engine3d.showInputLangBubble(label);
+  else engine.showInputLangBubble(label);
+});
 
 applyState();
 engine.start();

@@ -269,8 +269,31 @@ export const KEDMANEE: Readonly<Record<string, string>> = {
   z: 'ผ', x: 'ป', c: 'แ', v: 'อ', b: 'ิ', n: 'ื', m: 'ท', comma: 'ม', dot: 'ใ', slash: 'ฝ',
 };
 
+/**
+ * Shifted Thai Kedmanee character per key id (TIS 820-2538). Shown only in key bubbles while
+ * Shift is held with Thai input active; the keycaps show the unshifted character.
+ */
+export const KEDMANEE_SHIFTED: Readonly<Record<string, string>> = {
+  grave: '%', '1': '+', '2': '\u0E51', '3': '\u0E52', '4': '\u0E53', '5': '\u0E54', '6': '\u0E39', '7': '\u0E3F',
+  '8': '\u0E55', '9': '\u0E56', '0': '\u0E57', minus: '\u0E58', equal: '\u0E59',
+  q: '\u0E50', w: '"', e: '\u0E0E', r: '\u0E11', t: '\u0E18', y: '\u0E4D', u: '\u0E4A', i: '\u0E13', o: '\u0E2F', p: '\u0E0D',
+  lb: '\u0E10', rb: ',', bslash: '\u0E05',
+  a: '\u0E24', s: '\u0E06', d: '\u0E0F', f: '\u0E42', g: '\u0E0C', h: '\u0E47', j: '\u0E4B', k: '\u0E29', l: '\u0E28', semi: '\u0E0B', quote: '.',
+  z: '(', x: ')', c: '\u0E09', v: '\u0E2E', b: '\u0E3A', n: '\u0E4C', m: '?', comma: '\u0E12', dot: '\u0E2C', slash: '\u0E26',
+};
+
 /** Thai combining marks (above/below vowels and tone marks) on the Kedmanee keys. */
 const THAI_COMBINING = /^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]$/;
+
+/** Puts a lone combining mark on a dotted circle (U+25CC) so it is visible and never clipped. */
+function onDottedCircle(ch: string): string {
+  return THAI_COMBINING.test(ch) ? `\u25CC${ch}` : ch;
+}
+
+/** True when the text contains Thai script (so it is drawn with the Thai font stack). */
+export function hasThaiText(text: string): boolean {
+  return /[\u0E00-\u0E7F]/.test(text);
+}
 
 /**
  * The Thai legend to draw for a key, or '' when it has none. Combining marks are put on a
@@ -279,7 +302,48 @@ const THAI_COMBINING = /^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]$/;
 export function kedmaneeLegend(keyId: string): string {
   const ch = KEDMANEE[keyId];
   if (!ch) return '';
-  return THAI_COMBINING.test(ch) ? `\u25CC${ch}` : ch;
+  return onDottedCircle(ch);
+}
+
+/**
+ * Key id of the character key for a VK (main block only: the number row, letters and
+ * punctuation). Numpad, function, arrow and modifier VKs are not in it, so their bubbles never
+ * change with the input language.
+ */
+const CHAR_KEY_ID_BY_VK: ReadonlyMap<number, string> = (() => {
+  const m = new Map<number, string>();
+  for (let d = 0; d <= 9; d++) m.set(0x30 + d, String(d));
+  for (let c = 0; c < 26; c++) m.set(0x41 + c, String.fromCharCode(0x61 + c));
+  const punct: Array<[number, string]> = [
+    [0xc0, 'grave'], [0xbd, 'minus'], [0xbb, 'equal'], [0xdb, 'lb'], [0xdd, 'rb'],
+    [0xdc, 'bslash'], [0xba, 'semi'], [0xde, 'quote'], [0xbc, 'comma'], [0xbe, 'dot'],
+    [0xbf, 'slash'],
+  ];
+  for (const [vk, id] of punct) m.set(vk, id);
+  return m;
+})();
+
+/** VK of the ` ~ key (on the 65% layout it lights the ESC keycap). */
+export const VK_GRAVE = 0xc0;
+
+/**
+ * Bubble text for a key press. With Thai input it is the Kedmanee character the key produces
+ * (the shifted one while Shift is held), taken from our own tables by VK; Caps Lock is
+ * ignored. Otherwise it is today's Latin bubble; when the keyboard follows the input language
+ * (Windows), the ` ~ key, which lights the ESC cap on the 65% layout, shows "`" instead of "Esc".
+ */
+export function bubbleForKey(
+  vk: number,
+  spec: KeySpec | null,
+  opts: { thaiInput: boolean; shift: boolean; followsInput: boolean },
+): string {
+  if (opts.thaiInput) {
+    const id = CHAR_KEY_ID_BY_VK.get(vk);
+    const ch = id ? (opts.shift ? KEDMANEE_SHIFTED[id] : KEDMANEE[id]) : undefined;
+    if (ch) return onDottedCircle(ch);
+  }
+  if (opts.followsInput && vk === VK_GRAVE) return '`';
+  return formatBubbleForVk(vk, spec);
 }
 
 /** Canvas font stack for Thai legends (Thai fonts first so ◌ and its mark share one font). */

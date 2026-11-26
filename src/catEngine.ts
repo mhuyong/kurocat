@@ -1,3 +1,4 @@
+import { GRAVE_BUBBLE_HOLD_MS, followsInputLang } from './inputLang';
 import {
   KEYBOARD_KEYS_65,
   KEYBOARD_KEYS_108,
@@ -6,10 +7,11 @@ import {
   kedmaneeLegend,
   type KeySpec,
   type KeyboardLayoutId,
-  formatBubbleForVk,
+  VK_GRAVE,
+  hasThaiText,
   resolveKeyByVk,
 } from './keyboardLayout';
-import { getActiveLocale } from './i18n';
+import { keyBubbleLabel, thaiLegendMode } from './inputLang';
 import { catAudio } from './audio';
 import { resolveCustomSkin, type CatSkinConfig, type ResolvedSkin } from './catSkins';
 import { DaFeiYuRenderer, type DaFeiYuLayout } from './dafeiyuRenderer';
@@ -280,6 +282,7 @@ export class KuroCatEngine {
   public setPrivacyMode(active: boolean): void {
     this.wakeRendering();
     this.privacyMode = active;
+    if (active) this.cancelHeldGraveBubble();
     this.dafeiyu.onPrivacyModeChanged(active);
     if (active) {
       this.heldKeys.clear();
@@ -826,6 +829,8 @@ export class KuroCatEngine {
   private keyAnims = new Map<string, KeyAnim>();
   private bubbles: KeyBubble[] = [];
   private nextBubbleId = 1;
+  private lastGraveBubbleId = 0;
+  private lastGraveBubbleAt = -10000;
   private fpsCap = 0;
   private sleepTrimSent = false;
   public onDeepSleep: (() => void) | null = null;
@@ -1234,9 +1239,9 @@ export class KuroCatEngine {
       const pt = dafeiyuUseTail ? this.getTailTargetPoint(spec) : rawKeyPt;
       this.dafeiyu.onKeyDown(vk, pt, dafeiyuLayout, repeat, dafeiyuUseTail);
       if (this.showKeyBubbles) {
-        const label = formatBubbleForVk(vk, spec);
+        const label = keyBubbleLabel(vk, spec);
         if (label) {
-          this.spawnBubble(label, spec.id === 'space', pt.x, now);
+          this.spawnBubble(label, spec.id === 'space', pt.x, now, vk);
         }
       }
       return;
@@ -1290,9 +1295,9 @@ export class KuroCatEngine {
       }
 
       if (this.showKeyBubbles) {
-        const label = formatBubbleForVk(vk, spec);
+        const label = keyBubbleLabel(vk, spec);
         if (label) {
-          this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now);
+          this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, vk);
         }
       }
       return;
@@ -1375,9 +1380,9 @@ export class KuroCatEngine {
     }
 
     if (this.showKeyBubbles) {
-      const label = formatBubbleForVk(vk, spec);
+      const label = keyBubbleLabel(vk, spec);
       if (label) {
-        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now);
+        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, vk);
       }
     }
   }
@@ -1721,9 +1726,26 @@ export class KuroCatEngine {
     };
   }
 
-  private spawnBubble(label: string, isSpace: boolean, keyX: number, now: number): void {
+  private spawnBubble(label: string, isSpace: boolean, keyX: number, now: number, vk = 0): void {
+    if (vk === VK_GRAVE && followsInputLang() && !this.graveBubbleFlushing) {
+      // Hold the ` ~ bubble: if this press switched the input language, it is dropped.
+      this.cancelHeldGraveBubble();
+      this.heldGraveBubbleTimer = window.setTimeout(() => {
+        this.heldGraveBubbleTimer = 0;
+        if (!this.showKeyBubbles || this.privacyMode) return;
+        this.graveBubbleFlushing = true;
+        this.spawnBubble(label, isSpace, keyX, performance.now(), vk);
+        this.graveBubbleFlushing = false;
+        this.wakeRendering();
+      }, GRAVE_BUBBLE_HOLD_MS);
+      return;
+    }
     if (this.bubbles.length >= 6) {
       this.bubbles.shift();
+    }
+    if (vk === VK_GRAVE) {
+      this.lastGraveBubbleId = this.nextBubbleId;
+      this.lastGraveBubbleAt = now;
     }
     const minX = this.keyboardLayout === '108' ? 145 : 125;
     const maxX = this.logicalW - 105;
@@ -1742,6 +1764,39 @@ export class KuroCatEngine {
       lifetime: 940,
     });
     this.layoutBubbles();
+  }
+
+  /** Re-draws the keycap legends after an input-language switch (the cache key follows it). */
+  public refreshKeyLegends(): void {
+    this.wakeRendering();
+  }
+
+  /**
+   * One bubble for an input-language switch ("ไทย" / "EN" / "JA"). Not shown while password
+   * privacy is active or bubbles are off. When the switch came from the ` ~ key a moment ago,
+   * that key's own bubble is replaced, so pressing ~ to switch shows only the language.
+   */
+  private heldGraveBubbleTimer = 0;
+  private graveBubbleFlushing = false;
+
+  private cancelHeldGraveBubble(): void {
+    if (this.heldGraveBubbleTimer) {
+      window.clearTimeout(this.heldGraveBubbleTimer);
+      this.heldGraveBubbleTimer = 0;
+    }
+  }
+
+  public showInputLangBubble(label: string): void {
+    this.cancelHeldGraveBubble();
+    if (!this.showKeyBubbles || this.privacyMode || !label) return;
+    const now = performance.now();
+    if (now - this.lastGraveBubbleAt < 900) {
+      const graveId = this.lastGraveBubbleId;
+      this.bubbles = this.bubbles.filter((b) => b.id !== graveId);
+      this.lastGraveBubbleAt = -10000;
+    }
+    this.wakeRendering(now);
+    this.spawnBubble(label, false, this.kbCenterX, now);
   }
 
   private layoutBubbles(): void {
@@ -3798,8 +3853,32 @@ export class KuroCatEngine {
       }
 
       const legend = key.id === 'space' ? (isTailSelected ? '␣' : '') : key.id === 'esc' ? 'Esc' : key.label;
-      const thaiLegend = getActiveLocale() === 'th-TH' ? kedmaneeLegend(key.id) : '';
-      if (legend && thaiLegend) {
+      const thaiMode = thaiLegendMode();
+      const thaiLegend = thaiMode !== 'off' ? kedmaneeLegend(key.id) : '';
+      if (legend && thaiLegend && thaiMode === 'main') {
+        // Thai input active: Thai Kedmanee large and centred, Latin small in the top-left corner.
+        const latinSize = is108 ? 3.6 : 4.0;
+        const thaiSize = is108 ? 7.0 : 7.8;
+        targetCtx.save();
+        targetCtx.translate(x + w * 0.5, y + (h - 0.9) * 0.5);
+        if (isCatFacing) {
+          targetCtx.rotate(Math.PI);
+        }
+        targetCtx.fillStyle = press > 0.14 || isTailSelected
+          ? '#111214'
+          : key.accent === 'orange'
+            ? '#ffffff'
+            : '#2c2f36';
+        targetCtx.font = `700 ${latinSize}px "Segoe UI", system-ui, sans-serif`;
+        targetCtx.textAlign = 'left';
+        targetCtx.textBaseline = 'top';
+        targetCtx.fillText(legend, -w * 0.5 + 1.0, -(h - 0.9) * 0.5 + 0.6);
+        targetCtx.font = `600 ${thaiSize}px ${THAI_LEGEND_FONTS}`;
+        targetCtx.textAlign = 'center';
+        targetCtx.textBaseline = 'middle';
+        targetCtx.fillText(thaiLegend, w * 0.12, 0.9);
+        targetCtx.restore();
+      } else if (legend && thaiLegend) {
         // Two legends: Latin smaller top-left, Thai Kedmanee bottom-right.
         const latinSize = is108 ? 4.4 : 4.9;
         const thaiSize = is108 ? 5.6 : 6.2;
@@ -3866,7 +3945,7 @@ export class KuroCatEngine {
       const padMargin = 20;
       const cacheLogW = Math.ceil(botHalfW * 2 + padMargin * 2);
       const cacheLogH = Math.ceil(this.kbHeight + padMargin * 2);
-      const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}|${getActiveLocale() === 'th-TH' ? 'th' : ''}`;
+      const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}|${thaiLegendMode()}`;
 
       if (!this.kbCacheCanvas || this.kbCacheKey !== nextKey) {
         if (!this.kbCacheCanvas) this.kbCacheCanvas = document.createElement('canvas');
@@ -4407,7 +4486,9 @@ export class KuroCatEngine {
       ctx.rotate(b.rot);
       ctx.scale(scale, scale);
 
-      ctx.font = '700 12px "Segoe UI", system-ui, sans-serif';
+      ctx.font = hasThaiText(b.label)
+        ? `700 12px ${THAI_LEGEND_FONTS}`
+        : '700 12px "Segoe UI", system-ui, sans-serif';
       const textW = ctx.measureText(b.label).width;
       const boxW = b.isSpace ? 40 : Math.max(24, textW + 13);
       const boxH = 24;

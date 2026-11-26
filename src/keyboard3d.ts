@@ -8,7 +8,7 @@ import {
   type KeySpec,
 } from './keyboardLayout';
 import type { KeyboardOrientation } from './catEngine';
-import { getActiveLocale } from './i18n';
+import { thaiLegendMode, type ThaiLegendMode } from './inputLang';
 
 export class Spring1D {
   public x: number;
@@ -280,9 +280,12 @@ interface KeyAtlasData {
 
 const keyAtlasCache = new Map<string, KeyAtlasData>();
 
-/** Second (Thai Kedmanee) keycap legend, only while the UI language is th-TH. */
+/**
+ * Thai Kedmanee keycap legend: while Thai input is active (Windows), or as a second legend
+ * while the UI language is th-TH (macOS / Linux). See `thaiLegendMode()`.
+ */
 function secondLegendFor(spec: KeySpec): string {
-  return getActiveLocale() === 'th-TH' ? kedmaneeLegend(spec.id) : '';
+  return thaiLegendMode() !== 'off' ? kedmaneeLegend(spec.id) : '';
 }
 
 /** Atlas tile key shared by the atlas builder and the per-key UV lookup. */
@@ -324,6 +327,38 @@ function drawFittedLegend(
     size -= 2;
   }
 }
+/**
+ * Draws `text` with the Thai legend font centred in the [x0, x1] x [y0, y1] box, using its
+ * measured ink box (marks included), shrinking it until it fits.
+ */
+function drawCentredLegend(
+  g: CanvasRenderingContext2D,
+  text: string,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  maxSize: number,
+): void {
+  let size = maxSize;
+  for (;;) {
+    g.font = `600 ${size}px ${THAI_LEGEND_FONTS}`;
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    const m = g.measureText(text);
+    const inkW = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    if ((inkW <= x1 - x0 && inkH <= y1 - y0) || size <= 14) {
+      const cx = (x0 + x1) * 0.5;
+      const cy = (y0 + y1) * 0.5;
+      const left = cx - inkW * 0.5 + m.actualBoundingBoxLeft;
+      const baseline = cy + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) * 0.5;
+      g.fillText(text, left, baseline);
+      return;
+    }
+    size -= 2;
+  }
+}
 const miscTextureCache = new Map<string, THREE.CanvasTexture>();
 
 /**
@@ -336,8 +371,8 @@ function getKeycapAtlas(
   keys: readonly KeySpec[],
   rotated180: boolean,
 ): KeyAtlasData {
-  const thai = getActiveLocale() === 'th-TH';
-  const cacheKey = `${layoutId}|${rotated180 ? 1 : 0}${thai ? '|th' : ''}`;
+  const thaiMode = thaiLegendMode();
+  const cacheKey = `${layoutId}|${rotated180 ? 1 : 0}${thaiMode !== 'off' ? `|${thaiMode}` : ''}`;
   const cached = keyAtlasCache.get(cacheKey);
   if (cached) return cached;
 
@@ -408,7 +443,19 @@ function getKeycapAtlas(
     g.fillStyle = grad;
     g.fillRect(ox, oy, CELL, CELL);
 
-    if (item.label && item.second) {
+    if (item.label && item.second && thaiMode === 'main') {
+      // Thai input active: Thai large and centred, Latin small in the top-left corner.
+      g.save();
+      g.translate(ox + CELL * 0.5, oy + CELL * 0.5);
+      if (rotated180) g.rotate(Math.PI);
+      g.fillStyle = item.accent === 'orange' ? '#ffffff' : '#2b2d34';
+      g.font = `700 ${item.label.length >= 2 ? 17 : 20}px "Segoe UI", system-ui, sans-serif`;
+      g.textAlign = 'left';
+      g.textBaseline = 'top';
+      g.fillText(item.label, -CELL * 0.5 + PAD + 3, -CELL * 0.5 + PAD + 2);
+      drawCentredLegend(g, item.second, -CELL * 0.5 + PAD + 8, -CELL * 0.5 + PAD + 12, CELL * 0.5 - PAD - 4, CELL * 0.5 - PAD - 3, 52);
+      g.restore();
+    } else if (item.label && item.second) {
       // Two legends: Latin smaller top-left, Thai bottom-right (fitted to its measured box).
       g.save();
       g.translate(ox + CELL * 0.5, oy + CELL * 0.5);
@@ -626,7 +673,7 @@ export class KeyboardAndMouse3D {
 
   private layoutId: KeyboardLayoutId = '65';
   private orientation: KeyboardOrientation = 'cat';
-  private boardThai = false;
+  private boardThai: ThaiLegendMode = 'off';
   private hitColor = new THREE.Color('#d4f044');
   private rightBtnColor = new THREE.Color('#ff7b3b');
   private boardH = 0.115;
@@ -869,7 +916,7 @@ export class KeyboardAndMouse3D {
 
   public rebuildBoard(layoutId: KeyboardLayoutId, orientation: KeyboardOrientation): void {
     // Skip redundant rebuild if nothing changed and meshes already exist
-    const thai = getActiveLocale() === 'th-TH';
+    const thai = thaiLegendMode();
     if (
       this.sideInstanced &&
       this.layoutId === layoutId &&

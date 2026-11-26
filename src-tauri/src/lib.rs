@@ -5,6 +5,7 @@ mod config;
 mod game_detect;
 mod i18n;
 mod input_hook;
+mod input_lang;
 #[cfg(target_os = "macos")]
 mod macos_window;
 mod mcp;
@@ -368,6 +369,12 @@ fn get_cats() -> Vec<CatSkinConfig> {
 #[tauri::command]
 fn get_game_active() -> bool {
     game_detect::is_game_active()
+}
+
+/// Active Windows input language (ISO 639-1, e.g. "th", "en"), or null on macOS/Linux.
+#[tauri::command]
+fn get_input_lang() -> Option<String> {
+    input_lang::current()
 }
 
 #[tauri::command]
@@ -2897,6 +2904,7 @@ pub fn run() {
                 settings_for_setup.clone(),
                 paused_for_setup.clone(),
             );
+            input_lang::start_input_lang_watcher(handle.clone(), paused_for_setup.clone());
             start_hit_test_loop(
                 handle.clone(),
                 settings_for_setup,
@@ -2990,6 +2998,7 @@ pub fn run() {
             trim_idle_memory,
             get_cats,
             get_game_active,
+            get_input_lang,
             get_mcp_config,
             get_agent_hooks_config,
             get_obs_url,

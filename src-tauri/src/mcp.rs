@@ -1162,7 +1162,10 @@ pub fn run_stdio_mcp() {
                 let resp = json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": err_text("MCP server is disabled in KuroCat settings. Enable 'MCP 扩展' in KuroCat's menu or tray.")
+                    "result": err_text(&crate::i18n::uif(
+                        "agent.mcp_disabled",
+                        &[("menu", crate::i18n::ui("menu.toggle_mcp"))],
+                    ))
                 });
                 let _ = writeln!(out, "{}", resp);
                 let _ = out.flush();

@@ -229,7 +229,8 @@
     "connected": "已連線，待命中",
     "thinking_coding": "思考寫程式中…",
     "tool_error": "工具執行出錯",
-    "tool_failed": "工具執行失敗"
+    "tool_failed": "工具執行失敗",
+    "mcp_disabled": "KuroCat 設定中已關閉 MCP 服務。請在 KuroCat 的選單或系統匣中開啟「{menu}」。"
   },
   "diag": {
     "title": "KuroCat 鍵盤監聽診斷",

@@ -229,7 +229,8 @@
     "connected": "Connected, standing by",
     "thinking_coding": "Thinking and coding…",
     "tool_error": "A tool hit an error",
-    "tool_failed": "A tool failed"
+    "tool_failed": "A tool failed",
+    "mcp_disabled": "MCP server is disabled in KuroCat settings. Enable '{menu}' in KuroCat's menu or tray."
   },
   "diag": {
     "title": "KuroCat keyboard input check",

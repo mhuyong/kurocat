@@ -229,7 +229,8 @@
     "connected": "연결됨, 대기 중",
     "thinking_coding": "생각하며 코딩 중…",
     "tool_error": "도구 실행 오류",
-    "tool_failed": "도구 실행 실패"
+    "tool_failed": "도구 실행 실패",
+    "mcp_disabled": "KuroCat 설정에서 MCP 서버가 꺼져 있습니다. KuroCat 메뉴나 트레이에서 '{menu}'을(를) 켜 주세요."
   },
   "diag": {
     "title": "KuroCat 키보드 입력 진단",

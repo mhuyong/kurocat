@@ -229,7 +229,8 @@
     "connected": "接続済み、待機中",
     "thinking_coding": "考えながらコーディング中…",
     "tool_error": "ツールでエラーが発生しました",
-    "tool_failed": "ツールの実行に失敗しました"
+    "tool_failed": "ツールの実行に失敗しました",
+    "mcp_disabled": "KuroCat の設定で MCP サーバーが無効になっています。KuroCat のメニューまたはトレイで「{menu}」をオンにしてください。"
   },
   "diag": {
     "title": "KuroCat キーボード入力の診断",

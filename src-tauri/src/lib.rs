@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 
+mod ai_typing;
 mod cats;
 mod config;
 mod game_detect;
@@ -2914,8 +2915,13 @@ pub fn run() {
                 move || {
                     reload_and_emit_all(&http_handle);
                 },
-                move |ev| {
+                move |mut ev: mcp::AgentCompanionEvent| {
+                    // Events from `--hook` or `/agent/event` may carry a typed text already:
+                    // setting, secret filter and trim apply again here.
+                    ev.typed_text = ev.typed_text.as_deref().and_then(ai_typing::sanitize_forwarded);
                     let _ = agent_handle.emit("kuro-agent-event", &ev);
+                    // The OBS overlay is a broadcast surface: it never gets the AI's real text.
+                    ev.typed_text = None;
                     if let Ok(raw) = serde_json::to_string(&ev) {
                         obs::broadcast_raw("agentEvent", &raw);
                     }

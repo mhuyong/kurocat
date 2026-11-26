@@ -1790,7 +1790,7 @@ dependencies = [
 
 [[package]]
 name = "kuro-cat-pet"
-version = "5.1.2-th.1"
+version = "5.1.2-th.2"
 dependencies = [
  "block2",
  "objc2",

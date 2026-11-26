@@ -22,6 +22,14 @@ export interface DaFeiYuLayout {
   privacyMode: boolean;
   privacyTypingAt: number;
   is108: boolean;
+  /**
+   * 'viewer' orientation: the desk is mirrored around the cat (mouse on the viewer's right),
+   * the hand roles swap (right hand = mouse, left hand = typing) and the whale tail comes from
+   * the left side. The sprite itself is never mirrored.
+   */
+  mirror: boolean;
+  /** Cat centre x used as the mirror axis. */
+  centerX: number;
 }
 
 interface HandState {
@@ -174,18 +182,41 @@ export class DaFeiYuRenderer {
     this.bodyBob = Math.min(0.65, this.bodyBob + 0.42);
   }
 
-  public resetLeftHandForMouse(): void {
+  private mirrored = false;
+
+  /** Hand that works the mouse (left in 'cat', right in 'viewer'). */
+  private get mouseHand(): HandState {
+    return this.mirrored ? this.rightHand : this.leftHand;
+  }
+
+  /** Hand that types while the other one works the mouse. */
+  private get typingHand(): HandState {
+    return this.mirrored ? this.leftHand : this.rightHand;
+  }
+
+  public resetMouseHandForMouse(): void {
+    this.mouseHand.lastAt = -10000;
+  }
+
+  /** The orientation changed: drop held keys so no hand stays stuck on a key. */
+  public onDeskChanged(): void {
+    this.leftHand.heldVks.clear();
+    this.rightHand.heldVks.clear();
+    this.tail.heldVks.clear();
     this.leftHand.lastAt = -10000;
+    this.rightHand.lastAt = -10000;
   }
 
   public onMouseAction(now: number = performance.now()): void {
     this.lastMouseClickAt = now;
   }
 
+  /** `rightBusy` is the typing hand (right in 'cat', left in 'viewer'). */
   public getHandBusyState(now: number): { leftHeld: number; rightHeld: number; rightBusy: boolean } {
     const leftHeld = this.leftHand.heldVks.size;
     const rightHeld = this.rightHand.heldVks.size;
-    const rightBusy = rightHeld > 0 || now - this.rightHand.lastAt < 135;
+    const typing = this.typingHand;
+    const rightBusy = typing.heldVks.size > 0 || now - typing.lastAt < 135;
     return { leftHeld, rightHeld, rightBusy };
   }
 
@@ -217,6 +248,8 @@ export class DaFeiYuRenderer {
     useTail: boolean,
   ): void {
     if (layout.privacyMode || repeat) return;
+    this.mirrored = layout.mirror;
+    const m = layout.mirror ? -1 : 1;
     const now = performance.now();
     this.lastKeyAt = now;
     this.lastKeyGazeAt = now;
@@ -239,23 +272,44 @@ export class DaFeiYuRenderer {
       this.tail.slapTargetY = pt.y;
       this.tail.squash = 1;
       if (!mouseBusy) {
-        this.bodyTiltTarget = normX >= 0 ? -0.075 : 0.055;
-        this.bodyShiftTarget = normX >= 0 ? -7 : 8;
+        // Lean away from the tail side ('viewer': tail on the left, so mirrored).
+        const towardTail = normX * m >= 0;
+        this.bodyTiltTarget = (towardTail ? -0.075 : 0.055) * m;
+        this.bodyShiftTarget = (towardTail ? -7 : 8) * m;
       }
       this.ripples.push({ x: pt.x, y: pt.y, r: 6, life: 1 });
       this.ripples.push({ x: pt.x, y: pt.y, r: 2, life: 0.85 });
       this.spawnParticles(pt.x, pt.y - 8, 3, true);
     } else if (mouseBusy) {
-      // Simultaneous mouse + keyboard: left hand stays glued on mouse, right hand taps main keyboard!
-      const shiftBase = layout.is108 ? -88 : -38;
+      // Simultaneous mouse + keyboard: the mouse hand stays glued on the mouse, the typing hand
+      // taps the main keyboard (mirrored in 'viewer')!
+      const shiftBase = (layout.is108 ? -88 : -38) * m;
       const curCharX = charX + shiftBase;
-      const comfortX = Math.max(curCharX - 10, Math.min(curCharX + 92, pt.x));
+      const comfortX = layout.mirror
+        ? Math.max(curCharX - 92, Math.min(curCharX + 10, pt.x))
+        : Math.max(curCharX - 10, Math.min(curCharX + 92, pt.x));
       const comfortY = Math.min(layout.kbCenterY + 6, pt.y);
-      this.rightHand.tx = comfortX;
-      this.rightHand.ty = comfortY;
-      this.rightHand.lastAt = now;
-      this.rightHand.squash = 1;
-      this.rightHand.heldVks.add(vk);
+      const hand = this.typingHand;
+      hand.tx = comfortX;
+      hand.ty = comfortY;
+      hand.lastAt = now;
+      hand.squash = 1;
+      hand.heldVks.add(vk);
+    } else if (layout.mirror) {
+      // 'viewer': strict roles, the typing (left) hand takes every key.
+      this.bodyTiltTarget = normX * 0.095;
+      this.bodyShiftTarget = normX * (layout.is108 ? 22 : 13);
+      const comfortX =
+        charX +
+        this.bodyShiftTarget +
+        Math.max(-76, Math.min(76, (pt.x - charX) * 0.78));
+      const comfortY = Math.min(layout.kbCenterY + 10, pt.y);
+      const hand = this.typingHand;
+      hand.tx = comfortX;
+      hand.ty = comfortY;
+      hand.lastAt = now;
+      hand.squash = 1;
+      hand.heldVks.add(vk);
     } else {
       // Cozy two-handed typing with gentle micro-sway (±5.5°)
       this.bodyTiltTarget = normX * 0.095;
@@ -307,6 +361,8 @@ export class DaFeiYuRenderer {
   }
 
   public update(dt: number, now: number, layout: DaFeiYuLayout): void {
+    this.mirrored = layout.mirror;
+    const m = layout.mirror ? -1 : 1;
     this.bodyBob *= Math.exp(-12 * dt);
 
     const isHappy = !layout.privacyMode && layout.petEnergy > 0.25;
@@ -386,9 +442,10 @@ export class DaFeiYuRenderer {
       this.bodyTiltTarget = shySway;
       this.bodyDiveY *= Math.exp(-9 * dt);
     } else if (mouseMode) {
-      const baseShift = layout.is108 ? -125 : -38;
+      // 108 'viewer': a little less than the mirror of 'cat' (-125) so her hair stays inside 540.
+      const baseShift = (layout.is108 ? (layout.mirror ? -108 : -125) : -38) * m;
       this.bodyShiftTarget = baseShift + (layout.mouseNX - 0.5) * 12;
-      this.bodyTiltTarget = -0.10;
+      this.bodyTiltTarget = -0.10 * m;
       this.bodyDiveY += (8 - this.bodyDiveY) * (1 - Math.exp(-10 * dt));
     } else if (!isTyping) {
       this.bodyShiftTarget = 0;
@@ -449,7 +506,7 @@ export class DaFeiYuRenderer {
 
     // 2b) Whale tail physics (relative to waist anchor so rapid body shifts NEVER detach the tail!)
     const gTail = this.computeGeom(now, layout);
-    const tailRoot = gTail.spritePointToWorld(0.56, 0.785);
+    const tailRoot = gTail.spritePointToWorld(layout.mirror ? 0.44 : 0.56, 0.785);
     const wagSpeed = isHappy
       ? 0.015
       : this.typingHeat > 0.45
@@ -458,7 +515,9 @@ export class DaFeiYuRenderer {
           ? 0.0082
           : 0.0042;
     const idleWag = Math.sin(now * wagSpeed) * (isHappy ? 0.34 : 0.16 + this.typingHeat * 0.16);
-    const maxIdleOffX = Math.max(54, Math.min(86, layout.logicalW - 26 - tailRoot.x));
+    // Tail space: x grows outward on the tail side (mirrored around the root in 'viewer').
+    const roomX = layout.mirror ? tailRoot.x - 26 : layout.logicalW - 26 - tailRoot.x;
+    const maxIdleOffX = Math.max(54, Math.min(86, roomX));
     const idleOffX = maxIdleOffX + Math.sin(now * wagSpeed) * 9;
     const idleOffY = -36 + Math.cos(now * wagSpeed * 1.15) * 7;
 
@@ -477,7 +536,7 @@ export class DaFeiYuRenderer {
     this.tail.phase += (targetPhase - this.tail.phase) * (1 - Math.exp(-34 * dt));
     if (this.tail.phase < 0.002 && targetPhase === 0) this.tail.phase = 0;
 
-    const slapOffX = this.tail.slapTargetX - tailRoot.x;
+    const slapOffX = (this.tail.slapTargetX - tailRoot.x) * m;
     const slapOffY = this.tail.slapTargetY - tailRoot.y;
     const targetRelX = idleOffX + (slapOffX - idleOffX) * this.tail.phase;
     const targetRelY = idleOffY + (slapOffY - idleOffY) * this.tail.phase;
@@ -768,20 +827,8 @@ export class DaFeiYuRenderer {
 
     // Draw whale tail behind body sprite & keyboard so its root emerges naturally from her waist
     // and NEVER floats on top of the keyboard or detaches when shifting left for mouseMode (Fixes #11).
-    const tailRoot = g.spritePointToWorld(0.56, 0.785);
-    const tipX = tailRoot.x + this.tail.relX;
-    const tipY = tailRoot.y + this.tail.relY;
-    this.drawWhaleTail(
-      ctx,
-      tailRoot.x,
-      tailRoot.y,
-      tipX,
-      tipY,
-      this.tail.phase,
-      this.tail.activeWag,
-      layout.logicalW,
-      'back',
-    );
+    const tailRoot = g.spritePointToWorld(layout.mirror ? 0.44 : 0.56, 0.785);
+    this.drawTailInSpace(ctx, tailRoot, layout, 'back');
 
     let exprKey: 'idle' | 'blink' | 'shy' | 'happy' = 'idle';
     if (layout.privacyMode) exprKey = 'blink';
@@ -856,7 +903,7 @@ export class DaFeiYuRenderer {
     const g = this.computeGeom(now, layout);
     const shL = g.spritePointToWorld(0.39, 0.653);
     const shR = g.spritePointToWorld(0.61, 0.653);
-    const tailRoot = g.spritePointToWorld(0.56, 0.785);
+    const tailRoot = g.spritePointToWorld(layout.mirror ? 0.44 : 0.56, 0.785);
 
     const isHappy = !layout.privacyMode && layout.petEnergy > 0.25;
     const mouseMode =
@@ -879,29 +926,21 @@ export class DaFeiYuRenderer {
     // 2) Only draw the arching front half & fluke of the whale tail in foreground while slapping a key,
     // keeping the waist root strictly behind her body & keyboard bezel!
     if (this.tail.phase > 0.12) {
-      const tipX = tailRoot.x + this.tail.relX;
-      const tipY = tailRoot.y + this.tail.relY;
-      this.drawWhaleTail(
-        ctx,
-        tailRoot.x,
-        tailRoot.y,
-        tipX,
-        tipY,
-        this.tail.phase,
-        this.tail.activeWag,
-        layout.logicalW,
-        'front',
-      );
+      this.drawTailInSpace(ctx, tailRoot, layout, 'front');
     }
 
     // 3) Pure round chibi hands (covering closed eyes in privacyMode!)
-    const leftTyping =
+    // Roles: the mouse hand is the left one in 'cat' and the right one in 'viewer'.
+    this.mirrored = layout.mirror;
+    const mouseHandTyping =
       !layout.privacyMode &&
       !mouseMode &&
-      (now - this.leftHand.lastAt < 380 || this.leftHand.heldVks.size > 0);
-    const rightTyping =
+      (now - this.mouseHand.lastAt < 380 || this.mouseHand.heldVks.size > 0);
+    const typingHandTyping =
       !layout.privacyMode &&
-      (now - this.rightHand.lastAt < 380 || this.rightHand.heldVks.size > 0);
+      (now - this.typingHand.lastAt < 380 || this.typingHand.heldVks.size > 0);
+    const leftTyping = layout.mirror ? typingHandTyping : mouseHandTyping;
+    const rightTyping = layout.mirror ? mouseHandTyping : typingHandTyping;
 
     let lTargetX: number;
     let lTargetY: number;
@@ -921,6 +960,26 @@ export class DaFeiYuRenderer {
       lTargetY = shL.y + 4 + cheer;
       rTargetX = shR.x + 14;
       rTargetY = shR.y + 4 - cheer;
+    } else if (layout.mirror) {
+      // 'viewer': right hand on the mouse, left hand types.
+      if (leftTyping) {
+        lTargetX = this.leftHand.tx;
+        lTargetY = this.leftHand.ty;
+      } else {
+        lTargetX = shL.x - 15;
+        lTargetY = shL.y + 34;
+      }
+      if (mouseMode) {
+        const pressOff = layout.mouseLeft || layout.mouseRight ? 2.5 : 0;
+        rTargetX = layout.mouseBtnX;
+        rTargetY = layout.mouseBtnY + pressOff;
+      } else if (rightTyping) {
+        rTargetX = this.rightHand.tx;
+        rTargetY = this.rightHand.ty;
+      } else {
+        rTargetX = shR.x + 15;
+        rTargetY = shR.y + 34;
+      }
     } else {
       if (mouseMode) {
         const pressOff = layout.mouseLeft || layout.mouseRight ? 2.5 : 0;
@@ -959,7 +1018,7 @@ export class DaFeiYuRenderer {
       this.leftHand.y,
       'left',
       this.leftHand.squash,
-      mouseMode ? maxMouseReach : 72,
+      mouseMode ? (layout.mirror ? 86 : maxMouseReach) : 72,
     );
     this.drawChubbyArm(
       ctx,
@@ -969,7 +1028,7 @@ export class DaFeiYuRenderer {
       this.rightHand.y,
       'right',
       this.rightHand.squash,
-      mouseMode ? 86 : 72,
+      mouseMode ? (layout.mirror ? (layout.is108 ? 110 : maxMouseReach) : 86) : 72,
     );
 
     // 4) Water droplets & hearts
@@ -980,6 +1039,29 @@ export class DaFeiYuRenderer {
       ctx.fillText(p.kind === 'heart' ? '💙' : '💧', p.x, p.y);
       ctx.restore();
     }
+  }
+
+  /**
+   * Draws the whale tail from `root`. In 'viewer' it is drawn mirrored around the root's x so
+   * it leaves her left side; the tail state (relX) is kept in that mirrored "tail space".
+   */
+  private drawTailInSpace(
+    ctx: CanvasRenderingContext2D,
+    root: { x: number; y: number },
+    layout: DaFeiYuLayout,
+    layer: 'back' | 'front',
+  ): void {
+    const tipX = root.x + this.tail.relX;
+    const tipY = root.y + this.tail.relY;
+    if (!layout.mirror) {
+      this.drawWhaleTail(ctx, root.x, root.y, tipX, tipY, this.tail.phase, this.tail.activeWag, layout.logicalW, layer);
+      return;
+    }
+    ctx.save();
+    ctx.translate(2 * root.x, 0);
+    ctx.scale(-1, 1);
+    this.drawWhaleTail(ctx, root.x, root.y, tipX, tipY, this.tail.phase, this.tail.activeWag, 2 * root.x, layer);
+    ctx.restore();
   }
 
   private drawWhaleTail(

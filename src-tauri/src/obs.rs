@@ -101,6 +101,7 @@ fn build_state_snapshot_json(app: &AppHandle) -> String {
         "cats": cats,
         "privacy": privacy,
         "gameActive": game_active,
+        "inputLang": crate::input_lang::current(),
     }))
     .unwrap_or_else(|_| "{}".to_string())
 }

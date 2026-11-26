@@ -5,6 +5,7 @@ mod config;
 mod game_detect;
 mod i18n;
 mod input_hook;
+mod input_lang;
 #[cfg(target_os = "macos")]
 mod macos_window;
 mod mcp;
@@ -370,6 +371,12 @@ fn get_game_active() -> bool {
     game_detect::is_game_active()
 }
 
+/// Active Windows input language (ISO 639-1, e.g. "th", "en"), or null on macOS/Linux.
+#[tauri::command]
+fn get_input_lang() -> Option<String> {
+    input_lang::current()
+}
+
 #[tauri::command]
 fn get_mcp_config() -> String {
     let exe = std::env::current_exe()
@@ -405,6 +412,11 @@ fn get_agent_hooks_config(state: State<'_, AppState>) -> String {
     let dsh_cmd = format!("\"{}\" --hook --source DeepSeek", exe);
     let qwen_cmd = format!("\"{}\" --hook --source Qwen", exe);
 
+    // Doubao Work memory rule: its JSON snippet is built here (braces would read as placeholders).
+    let working_json = format!(
+        r#"{{"status":"working","source":"豆包工作版","text":"{}"}}"#,
+        crate::i18n::t(&lang, "agent.processing")
+    );
     let config_json = serde_json::to_string_pretty(&serde_json::json!({
         "mcpServers": {
             "kurocat": {
@@ -425,9 +437,10 @@ fn get_agent_hooks_config(state: State<'_, AppState>) -> String {
                     "args": ["--mcp"]
                 }
             },
-            "memory_rule": format!(
-                "将以下规则保存为跨会话长期偏好（不要在用户目录创建临时脚本文件）：每次开始处理实质任务前，向 http://127.0.0.1:{}/hook 发送 UTF-8 JSON {{\"status\":\"working\",\"source\":\"豆包工作版\",\"text\":\"处理任务中…\"}}；需用户确认发 status:\"waiting\"；报错发 status:\"error\"；完成后发 status:\"done\",\"text\":\"任务完成！\"。",
-                port
+            "memory_rule": crate::i18n::tf(
+                &lang,
+                "ai.memory_rule",
+                &[("port", port.to_string()), ("working_json", working_json)],
             )
         },
         "workbuddy_hooks": {
@@ -489,42 +502,21 @@ fn get_agent_hooks_config(state: State<'_, AppState>) -> String {
     }))
     .unwrap_or_default();
 
-    let resolved = crate::i18n::effective_locale(&lang);
-    if resolved == "zh-CN" || resolved == "zh-TW" {
-        format!(
-            "请帮我把桌面宠物 KuroCat 的**任务状态联动**接入你当前运行的客户端（请自动判断你是 豆包工作版 / WorkBuddy / DeepSeek Harness / Codex / 千问 / Antigravity / Claude Code / Cursor 等，目标是干活时桌宠自动敲键盘，待确认/出错/任务完成时气泡提醒）：\n\
-            1. **情况 A — 无本地 hooks 配置文件的桌面端 Agent（如豆包工作版）**：\n\
-               - **不要修改别的客户端配置，也不要在项目/桌面目录创建临时 `.ps1` 或 `.json` 脚本文件**；\n\
-               - 请直接把下方 `doubao_work_setup.memory_rule` **保存为你的跨会话长期偏好/记忆**，统一通过 UTF-8 JSON 调用本地 `POST http://127.0.0.1:{}/hook` 同步 `working / waiting / error / done`（避免 Windows 命令行中文乱码）。\n\
-            2. **情况 B — 支持本地配置文件的 Agent（合并写入，完整保留我原有的其他配置，绝不覆盖删除已有项）**：\n\
-               - 腾讯 WorkBuddy / CodeBuddy：合并 `mcpServers.kurocat` + `workbuddy_hooks`\n\
-               - DeepSeek Harness (`dsh`)：合并 `mcpServers.kurocat` + `deepseek_harness_hooks`\n\
-               - OpenAI Codex CLI：`~/.codex/config.toml`（`[mcp_servers.kurocat]` 与 `notify`）+ `~/.codex/hooks.json`\n\
-               - 千问 Qwen Code：`~/.qwen/settings.json` 合并 `mcpServers.kurocat` + `qwen_code_hooks`\n\
-               - Antigravity（反重力）：`~/.gemini/config/mcp_config.json` + `~/.gemini/config/hooks.json`\n\
-               - Claude Code / Cursor / Windsurf / Trae：合并 `mcpServers.kurocat` + `claude_code_hooks`（也支持 Streamable HTTP `http://127.0.0.1:{}/mcp`）\n\
-            3. **立刻验收**：请通过 UTF-8 JSON 向 `POST http://127.0.0.1:{}/hook` 发送 `{{\"status\":\"done\",\"source\":\"<你的名字>\",\"text\":\"AI 伴侣配置成功！\"}}` 让我看到小猫冒泡。配置并验收完成后简短回复结果即可，无需额外推荐其他功能。\n\n\
-            ```json\n{}\n```",
-            port, port, port, config_json
-        )
-    } else {
-        format!(
-            "Please configure **live task-status sync** for the KuroCat desktop pet on your current client (auto-detect whether you are Doubao Work, WorkBuddy, DeepSeek Harness, OpenAI Codex CLI, Qwen Code, Antigravity, Claude Code, Cursor, etc., so the pet auto-types while working and alerts on waiting/error/done):\n\
-            1. **Case A — Desktop Agents without local hooks config files (e.g. Doubao Work)**:\n\
-               - **Do NOT touch other clients' config files and do NOT create temporary `.ps1`/`.json` scripts in my workspace**;\n\
-               - Save `doubao_work_setup.memory_rule` into your **long-term memory / preferences** so future chats automatically POST UTF-8 JSON to `http://127.0.0.1:{}/hook` (`working` / `waiting` / `error` / `done`).\n\
-            2. **Case B — Clients with local config files (MERGE cleanly without overwriting existing entries)**:\n\
-               - WorkBuddy / CodeBuddy: merge `mcpServers.kurocat` + `workbuddy_hooks`\n\
-               - DeepSeek Harness (`dsh`): merge `mcpServers.kurocat` + `deepseek_harness_hooks`\n\
-               - OpenAI Codex CLI: `~/.codex/config.toml` (`[mcp_servers.kurocat]` + `notify`) + `~/.codex/hooks.json`\n\
-               - Qwen Code: `~/.qwen/settings.json` (`mcpServers.kurocat` + `qwen_code_hooks`)\n\
-               - Antigravity: `~/.gemini/config/mcp_config.json` + `~/.gemini/config/hooks.json`\n\
-               - Claude Code / Cursor / Windsurf / Trae: merge `mcpServers.kurocat` + `claude_code_hooks` (or Streamable HTTP `http://127.0.0.1:{}/mcp`)\n\
-            3. **Live verification**: POST UTF-8 JSON `{{\"status\":\"done\",\"source\":\"<your-name>\",\"text\":\"KuroCat AI Companion connected!\"}}` to `http://127.0.0.1:{}/hook`, then reply briefly with the result without suggesting extra features.\n\n\
-            ```json\n{}\n```",
-            port, port, port, config_json
-        )
-    }
+    // The JSON snippet inside the prompt is built here (its braces would read as placeholders).
+    let done_json = format!(
+        r#"{{"status":"done","source":"<{}>","text":"{}"}}"#,
+        crate::i18n::t(&lang, "ai.your_name"),
+        crate::i18n::t(&lang, "ai.setup_done_text")
+    );
+    crate::i18n::tf(
+        &lang,
+        "ai.setup_prompt",
+        &[
+            ("port", port.to_string()),
+            ("done_json", done_json),
+            ("config", config_json),
+        ],
+    )
 }
 
 #[tauri::command]
@@ -918,7 +910,7 @@ fn save_tail_picker_selection(
         let mut updated = settings.clone();
         updated.tail_key_mode = "custom".to_string();
         updated.tail_key_ids = normalize_tail_key_ids(&key_ids);
-        try_save_settings(&updated).map_err(|error| format!("保存自定义尾巴按键失败: {error}"))?;
+        try_save_settings(&updated).map_err(|error| crate::i18n::uif("toast.tail_save_error", &[("err", error.to_string())]))?;
         *settings = updated.clone();
         updated
     };
@@ -1080,19 +1072,21 @@ fn get_cached_update_info() -> Option<updater::UpdateInfo> {
 async fn check_for_update() -> Result<updater::UpdateInfo, String> {
     tauri::async_runtime::spawn_blocking(updater::check_latest_update)
         .await
-        .map_err(|e| format!("检查更新任务异常: {}", e))?
+        .map_err(|e| crate::i18n::uif("updater.err_check_task", &[("err", e.to_string())]))?
 }
 
 #[tauri::command]
 async fn install_update(app: AppHandle, info: updater::UpdateInfo) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || updater::perform_update_install(&app, info))
         .await
-        .map_err(|e| format!("安装更新任务异常: {}", e))?
+        .map_err(|e| crate::i18n::uif("updater.err_install_task", &[("err", e.to_string())]))?
 }
 
 #[tauri::command]
 fn open_release_page(url: String) {
-    updater::open_url_in_browser(&url);
+    // No release link known yet: the fork's releases page (built from updater::UPDATE_REPO).
+    let target = if url.trim().is_empty() { updater::releases_list_url() } else { url };
+    updater::open_url_in_browser(&target);
 }
 
 #[tauri::command]
@@ -2897,6 +2891,7 @@ pub fn run() {
                 settings_for_setup.clone(),
                 paused_for_setup.clone(),
             );
+            input_lang::start_input_lang_watcher(handle.clone(), paused_for_setup.clone());
             start_hit_test_loop(
                 handle.clone(),
                 settings_for_setup,
@@ -2990,6 +2985,7 @@ pub fn run() {
             trim_idle_memory,
             get_cats,
             get_game_active,
+            get_input_lang,
             get_mcp_config,
             get_agent_hooks_config,
             get_obs_url,

@@ -20,6 +20,13 @@ import {
 } from './keyboardLayout';
 import type { CollarColorId, KuroCatEngine3D } from './catEngine3d';
 import {
+  inputLangBubbleLabel,
+  noteKeyForShift,
+  onInputLangChange,
+  resetShift,
+  setInputLang,
+} from './inputLang';
+import {
   applyDomTranslations,
   isMacPlatform,
   isWindowsPlatform,
@@ -740,7 +747,7 @@ async function confirmTailPicker(): Promise<void> {
     });
   } catch (error) {
     console.error('保存自定义尾巴按键失败', error);
-    tailPickerStatusOverride = '保存失败，请重试';
+    tailPickerStatusOverride = t('toast.tail_save_failed');
     syncTailPickerSelection();
     return;
   } finally {
@@ -979,14 +986,14 @@ async function triggerInstallUpdate(): Promise<void> {
   if (updateBusy || !latestUpdateInfo || !latestUpdateInfo.hasUpdate) return;
   updateBusy = true;
   closeContextMenu();
-  showUpdateToast(`⏳ 正在下载 v${latestUpdateInfo.latestVersion}...`, { busy: true });
-  setUpdateHint('下载中...', 'ready');
+  showUpdateToast(`⏳ ${t('toast.downloading', { ver: latestUpdateInfo.latestVersion })}`, { busy: true });
+  setUpdateHint(t('menu.downloading_short'), 'ready');
   try {
     await invoke('install_update', { info: latestUpdateInfo });
   } catch (err) {
     updateBusy = false;
     const msg = typeof err === 'string' ? err : String(err);
-    setUpdateHint('更新失败', 'error');
+    setUpdateHint(t('menu.update_failed'), 'error');
     showUpdateToast(`⚠ ${msg}`, { showOpen: true, autoHideMs: 6500 });
   }
 }
@@ -1070,7 +1077,8 @@ async function bootstrap(): Promise<void> {
 
   btnToastOpenEl.addEventListener('click', (e) => {
     e.stopPropagation();
-    const url = latestUpdateInfo?.releaseUrl || 'https://github.com/qianyiai/kurocat/releases/latest';
+    // Empty = no release link known; the backend then opens the fork's releases page (UPDATE_REPO).
+    const url = latestUpdateInfo?.releaseUrl || '';
     void invoke('open_release_page', { url });
   });
 
@@ -1195,8 +1203,28 @@ async function bootstrap(): Promise<void> {
     if (preset) applyTailPreset(preset);
   });
 
+  // Keycaps and bubbles follow the active Windows input language (no key data in this event).
+  onInputLangChange((lang, prev) => {
+    engine.refreshKeyLegends();
+    engine3d?.refreshKeyLegends();
+    if (prev === null || tailPickerOpen) return;
+    const label = inputLangBubbleLabel(lang);
+    if (active3d && engine3d) engine3d.showInputLangBubble(label);
+    else engine.showInputLangBubble(label);
+  });
+  await listen<{ lang: string }>('kuro-input-lang', (ev) => {
+    setInputLang(ev.payload);
+  });
+  void invoke<string | null>('get_input_lang')
+    .then((lang) => setInputLang(lang))
+    .catch(() => {});
+  window.addEventListener('blur', () => resetShift());
+
   await listen<InputEvent>('kuro-input', (ev) => {
     const p = ev.payload;
+    if (p.kind === 'keyDown' || p.kind === 'keyUp') {
+      noteKeyForShift(p.vk, p.kind === 'keyDown');
+    }
     switch (p.kind) {
       case 'keyDown':
         agentCompanion.notifyRealUserInput();
@@ -1244,6 +1272,7 @@ async function bootstrap(): Promise<void> {
 
   await listen<boolean>('kuro-privacy', (ev) => {
     privacyActive = Boolean(ev.payload);
+    resetShift();
     engine.setPrivacyMode(privacyActive);
     engine3d?.setPrivacyMode(privacyActive);
     agentCompanion.setPrivacyMode(privacyActive);

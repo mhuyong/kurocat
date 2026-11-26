@@ -97,10 +97,11 @@ fn normalize_action(raw: &str) -> Option<&'static str> {
     }
 }
 
+/// Locale key of the default bubble text for a tool, and whether it auto-types.
 fn label_for_tool(tool_name: &str) -> (&'static str, bool) {
     let lower = tool_name.trim().to_ascii_lowercase();
     if lower.is_empty() {
-        return ("处理任务中…", true);
+        return ("agent.processing", true);
     }
     if lower.contains("edit")
         || lower.contains("write")
@@ -108,16 +109,16 @@ fn label_for_tool(tool_name: &str) -> (&'static str, bool) {
         || lower.contains("replace")
         || lower.contains("notebook")
     {
-        ("写代码中…", true)
+        ("agent.coding", true)
     } else if lower.contains("command")
         || lower.contains("bash")
         || lower.contains("shell")
         || lower.contains("exec")
         || lower.contains("terminal")
     {
-        ("运行命令中…", true)
+        ("agent.running_cmd", true)
     } else if lower.contains("browser") || lower.contains("web") || lower.contains("fetch") {
-        ("查阅资料中…", true)
+        ("agent.researching", true)
     } else if lower.contains("read")
         || lower.contains("grep")
         || lower.contains("search")
@@ -126,11 +127,11 @@ fn label_for_tool(tool_name: &str) -> (&'static str, bool) {
         || lower.contains("glob")
         || lower.contains("view")
     {
-        ("阅读代码中…", true)
+        ("agent.reading_code", true)
     } else if lower.contains("subagent") || lower.contains("agent") || lower.contains("task") {
-        ("协作处理中…", true)
+        ("agent.collaborating", true)
     } else {
-        ("调用工具中…", true)
+        ("agent.calling_tool", true)
     }
 }
 
@@ -225,11 +226,11 @@ pub fn parse_hook_payload(
     if let Some(st_raw) = event_hint.or_else(|| raw.get("status").and_then(|v| v.as_str())) {
         if let Some(status) = normalize_status(st_raw) {
             let (default_text, default_auto_type, default_ttl, default_sound) = match status {
-                "working" => (Some("写代码中…".to_string()), true, 45_000, false),
-                "thinking" => (Some("思考中…".to_string()), false, 35_000, false),
-                "waiting" => (Some("等你确认操作".to_string()), false, 90_000, true),
-                "done" => (Some("任务完成！".to_string()), false, 6_500, true),
-                "error" => (Some("任务出错了".to_string()), false, 8_500, true),
+                "working" => (Some(crate::i18n::ui("agent.coding")), true, 45_000, false),
+                "thinking" => (Some(crate::i18n::ui("agent.thinking")), false, 35_000, false),
+                "waiting" => (Some(crate::i18n::ui("agent.waiting")), false, 90_000, true),
+                "done" => (Some(crate::i18n::ui("agent.done")), false, 6_500, true),
+                "error" => (Some(crate::i18n::ui("agent.error")), false, 8_500, true),
                 _ => (None, false, 1_500, false),
             };
             return Some(AgentCompanionEvent {
@@ -258,7 +259,7 @@ pub fn parse_hook_payload(
                 status: Some("done".to_string()),
                 action: None,
                 source: Some(source),
-                text: override_text.or_else(|| Some("任务完成！".to_string())),
+                text: override_text.or_else(|| Some(crate::i18n::ui("agent.done"))),
                 tool: None,
                 auto_type: Some(false),
                 sound: Some(explicit_sound.unwrap_or(true)),
@@ -322,7 +323,7 @@ pub fn parse_hook_payload(
             status: Some("idle".to_string()),
             action: None,
             source: Some(source),
-            text: override_text.or_else(|| Some("已连接，待命中".to_string())),
+            text: override_text.or_else(|| Some(crate::i18n::ui("agent.connected"))),
             tool: None,
             auto_type: Some(false),
             sound: Some(false),
@@ -346,7 +347,7 @@ pub fn parse_hook_payload(
             status: Some("working".to_string()),
             action: None,
             source: Some(source),
-            text: override_text.or_else(|| Some("思考写代码中…".to_string())),
+            text: override_text.or_else(|| Some(crate::i18n::ui("agent.thinking_coding"))),
             tool: None,
             auto_type: Some(explicit_auto_type.unwrap_or(true)),
             sound: Some(false),
@@ -361,7 +362,7 @@ pub fn parse_hook_payload(
                     status: Some("error".to_string()),
                     action: None,
                     source: Some(source),
-                    text: override_text.or_else(|| Some("工具执行出错".to_string())),
+                    text: override_text.or_else(|| Some(crate::i18n::ui("agent.tool_error"))),
                     tool: clean_short_text(tool_name, 36),
                     auto_type: Some(false),
                     sound: Some(explicit_sound.unwrap_or(true)),
@@ -375,7 +376,7 @@ pub fn parse_hook_payload(
                 status: Some("working".to_string()),
                 action: None,
                 source: Some(source),
-                text: override_text.or_else(|| Some(label.to_string())),
+                text: override_text.or_else(|| Some(crate::i18n::ui(label))),
                 tool: clean_short_text(tool_name, 36),
                 auto_type: Some(explicit_auto_type.unwrap_or(auto_type)),
                 sound: Some(false),
@@ -388,7 +389,7 @@ pub fn parse_hook_payload(
             status: Some("error".to_string()),
             action: None,
             source: Some(source),
-            text: override_text.or_else(|| Some("工具执行失败".to_string())),
+            text: override_text.or_else(|| Some(crate::i18n::ui("agent.tool_failed"))),
             tool: clean_short_text(tool_name, 36),
             auto_type: Some(false),
             sound: Some(explicit_sound.unwrap_or(true)),
@@ -400,7 +401,7 @@ pub fn parse_hook_payload(
             status: Some("waiting".to_string()),
             action: None,
             source: Some(source),
-            text: override_text.or_else(|| Some("等你确认操作".to_string())),
+            text: override_text.or_else(|| Some(crate::i18n::ui("agent.waiting"))),
             tool: clean_short_text(tool_name, 36),
             auto_type: Some(false),
             sound: Some(explicit_sound.unwrap_or(true)),
@@ -428,7 +429,7 @@ pub fn parse_hook_payload(
                     status: Some("error".to_string()),
                     action: None,
                     source: Some(source),
-                    text: override_text.or_else(|| Some("任务出错了".to_string())),
+                    text: override_text.or_else(|| Some(crate::i18n::ui("agent.error"))),
                     tool: None,
                     auto_type: Some(false),
                     sound: Some(explicit_sound.unwrap_or(true)),
@@ -441,7 +442,7 @@ pub fn parse_hook_payload(
                 status: Some("done".to_string()),
                 action: None,
                 source: Some(source),
-                text: override_text.or_else(|| Some("任务完成！".to_string())),
+                text: override_text.or_else(|| Some(crate::i18n::ui("agent.done"))),
                 tool: None,
                 auto_type: Some(false),
                 sound: Some(explicit_sound.unwrap_or(true)),
@@ -1525,7 +1526,7 @@ mod tests {
         });
         let ev2 = parse_hook_payload(&post_edit, None, None, None).unwrap();
         assert_eq!(ev2.status.as_deref(), Some("working"));
-        assert_eq!(ev2.text.as_deref(), Some("写代码中…"));
+        assert_eq!(ev2.text, Some(crate::i18n::ui("agent.coding")));
 
         let post_err = json!({
             "hookEventName": "PostToolUse",

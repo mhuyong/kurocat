@@ -182,6 +182,36 @@ pub fn tf(locale: &str, key: &str, vars: &[(&str, String)]) -> String {
     text
 }
 
+/// The user's language setting ("auto" or a shipped locale), kept for strings produced deep in
+/// the backend (updater, dialogs, agent bubbles) that have no settings handle at hand. Updated by
+/// `config::load_settings` / `config::try_save_settings`.
+static UI_LANGUAGE: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
+
+pub fn set_ui_language(setting: &str) {
+    if let Ok(mut guard) = UI_LANGUAGE.write() {
+        if guard.as_str() != setting {
+            *guard = setting.to_string();
+        }
+    }
+}
+
+fn ui_language() -> String {
+    UI_LANGUAGE
+        .read()
+        .map(|g| if g.is_empty() { "auto".to_string() } else { g.clone() })
+        .unwrap_or_else(|_| "auto".to_string())
+}
+
+/// `t()` in the current UI language.
+pub fn ui(key: &str) -> String {
+    t(&ui_language(), key)
+}
+
+/// `tf()` in the current UI language.
+pub fn uif(key: &str, vars: &[(&str, String)]) -> String {
+    tf(&ui_language(), key, vars)
+}
+
 pub fn platform_click_through_key() -> &'static str {
     if cfg!(target_os = "macos") {
         "tray.click_through_macos"

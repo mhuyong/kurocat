@@ -8,7 +8,8 @@ import {
   type KeySpec,
 } from './keyboardLayout';
 import type { KeyboardOrientation } from './catEngine';
-import { getActiveLocale } from './i18n';
+import { thaiLegendMode, type ThaiLegendMode } from './inputLang';
+import { getActiveLocale, t } from './i18n';
 
 export class Spring1D {
   public x: number;
@@ -280,9 +281,12 @@ interface KeyAtlasData {
 
 const keyAtlasCache = new Map<string, KeyAtlasData>();
 
-/** Second (Thai Kedmanee) keycap legend, only while the UI language is th-TH. */
+/**
+ * Thai Kedmanee keycap legend: while Thai input is active (Windows), or as a second legend
+ * while the UI language is th-TH (macOS / Linux). See `thaiLegendMode()`.
+ */
 function secondLegendFor(spec: KeySpec): string {
-  return getActiveLocale() === 'th-TH' ? kedmaneeLegend(spec.id) : '';
+  return thaiLegendMode() !== 'off' ? kedmaneeLegend(spec.id) : '';
 }
 
 /** Atlas tile key shared by the atlas builder and the per-key UV lookup. */
@@ -324,6 +328,38 @@ function drawFittedLegend(
     size -= 2;
   }
 }
+/**
+ * Draws `text` with the Thai legend font centred in the [x0, x1] x [y0, y1] box, using its
+ * measured ink box (marks included), shrinking it until it fits.
+ */
+function drawCentredLegend(
+  g: CanvasRenderingContext2D,
+  text: string,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  maxSize: number,
+): void {
+  let size = maxSize;
+  for (;;) {
+    g.font = `600 ${size}px ${THAI_LEGEND_FONTS}`;
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    const m = g.measureText(text);
+    const inkW = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    if ((inkW <= x1 - x0 && inkH <= y1 - y0) || size <= 14) {
+      const cx = (x0 + x1) * 0.5;
+      const cy = (y0 + y1) * 0.5;
+      const left = cx - inkW * 0.5 + m.actualBoundingBoxLeft;
+      const baseline = cy + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) * 0.5;
+      g.fillText(text, left, baseline);
+      return;
+    }
+    size -= 2;
+  }
+}
 const miscTextureCache = new Map<string, THREE.CanvasTexture>();
 
 /**
@@ -336,8 +372,8 @@ function getKeycapAtlas(
   keys: readonly KeySpec[],
   rotated180: boolean,
 ): KeyAtlasData {
-  const thai = getActiveLocale() === 'th-TH';
-  const cacheKey = `${layoutId}|${rotated180 ? 1 : 0}${thai ? '|th' : ''}`;
+  const thaiMode = thaiLegendMode();
+  const cacheKey = `${layoutId}|${rotated180 ? 1 : 0}${thaiMode !== 'off' ? `|${thaiMode}` : ''}`;
   const cached = keyAtlasCache.get(cacheKey);
   if (cached) return cached;
 
@@ -408,7 +444,19 @@ function getKeycapAtlas(
     g.fillStyle = grad;
     g.fillRect(ox, oy, CELL, CELL);
 
-    if (item.label && item.second) {
+    if (item.label && item.second && thaiMode === 'main') {
+      // Thai input active: Thai large and centred, Latin small in the top-left corner.
+      g.save();
+      g.translate(ox + CELL * 0.5, oy + CELL * 0.5);
+      if (rotated180) g.rotate(Math.PI);
+      g.fillStyle = item.accent === 'orange' ? '#ffffff' : '#2b2d34';
+      g.font = `700 ${item.label.length >= 2 ? 17 : 20}px "Segoe UI", system-ui, sans-serif`;
+      g.textAlign = 'left';
+      g.textBaseline = 'top';
+      g.fillText(item.label, -CELL * 0.5 + PAD + 3, -CELL * 0.5 + PAD + 2);
+      drawCentredLegend(g, item.second, -CELL * 0.5 + PAD + 8, -CELL * 0.5 + PAD + 12, CELL * 0.5 - PAD - 4, CELL * 0.5 - PAD - 3, 52);
+      g.restore();
+    } else if (item.label && item.second) {
       // Two legends: Latin smaller top-left, Thai bottom-right (fitted to its measured box).
       g.save();
       g.translate(ox + CELL * 0.5, oy + CELL * 0.5);
@@ -495,8 +543,44 @@ function makeSoftShadowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+const PLATE_FONT = (px: number) => `bold ${px}px "Segoe UI", "PingFang SC", sans-serif`;
+
+/**
+ * Draws the privacy plate text centred at (cx, cy) inside maxW x maxH. One line at 34px when it
+ * fits (the original zh-CN plate); otherwise split at " · " onto two lines and shrink (down to
+ * 20px) until every line fits, so translations and the lock emoji are never clipped.
+ */
+function drawPlateText(
+  g: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  maxW: number,
+  maxH: number,
+): void {
+  g.font = PLATE_FONT(34);
+  if (g.measureText(text).width <= maxW) {
+    g.fillText(text, cx, cy);
+    return;
+  }
+  const sep = text.indexOf(' · ');
+  const lines = sep > 0 ? [text.slice(0, sep), text.slice(sep + 3)] : [text];
+  let size = 34;
+  for (; size > 20; size -= 1) {
+    g.font = PLATE_FONT(size);
+    const widest = Math.max(...lines.map((l) => g.measureText(l).width));
+    if (widest <= maxW && size * 1.25 * lines.length <= maxH) break;
+  }
+  g.font = PLATE_FONT(size);
+  const lineH = size * 1.25;
+  const top = cy - (lineH * (lines.length - 1)) / 2;
+  lines.forEach((line, i) => g.fillText(line, cx, top + i * lineH, maxW));
+}
+
 function makePrivacyTexture(): THREE.CanvasTexture {
-  const hit = miscTextureCache.get('privacy:shield');
+  // Cached per UI language: the plate text is localized.
+  const cacheKey = `privacy:shield:${getActiveLocale()}`;
+  const hit = miscTextureCache.get(cacheKey);
   if (hit) return hit;
   const pCanvas = document.createElement('canvas');
   pCanvas.width = 512;
@@ -507,14 +591,13 @@ function makePrivacyTexture(): THREE.CanvasTexture {
   pg.strokeStyle = 'rgba(244, 114, 182, 0.65)';
   pg.lineWidth = 6;
   pg.strokeRect(6, 6, 500, 148);
-  pg.font = 'bold 34px "Segoe UI", "PingFang SC", sans-serif';
   pg.fillStyle = '#fbcfe8';
   pg.textAlign = 'center';
   pg.textBaseline = 'middle';
-  pg.fillText('🔒 密码防偷窥 · 已隐藏按键', 256, 80);
+  drawPlateText(pg, t('privacy.plate_3d'), 256, 80, 460, 128);
   const pTex = new THREE.CanvasTexture(pCanvas);
   pTex.colorSpace = THREE.SRGBColorSpace;
-  miscTextureCache.set('privacy:shield', pTex);
+  miscTextureCache.set(cacheKey, pTex);
   return pTex;
 }
 
@@ -626,7 +709,7 @@ export class KeyboardAndMouse3D {
 
   private layoutId: KeyboardLayoutId = '65';
   private orientation: KeyboardOrientation = 'cat';
-  private boardThai = false;
+  private boardThai: ThaiLegendMode = 'off';
   private hitColor = new THREE.Color('#d4f044');
   private rightBtnColor = new THREE.Color('#ff7b3b');
   private boardH = 0.115;
@@ -869,7 +952,7 @@ export class KeyboardAndMouse3D {
 
   public rebuildBoard(layoutId: KeyboardLayoutId, orientation: KeyboardOrientation): void {
     // Skip redundant rebuild if nothing changed and meshes already exist
-    const thai = getActiveLocale() === 'th-TH';
+    const thai = thaiLegendMode();
     if (
       this.sideInstanced &&
       this.layoutId === layoutId &&
@@ -898,7 +981,8 @@ export class KeyboardAndMouse3D {
     const isCatFacing = orientation === 'cat';
 
     // Sync mouse orientation (180° cat-facing vs 0° viewer-facing)
-    this.mouseShape.rotation.y = isCatFacing ? -0.10 : Math.PI - 0.10;
+    // Buttons toward the viewer in 'viewer'; the small yaw is mirrored with the desk.
+    this.mouseShape.rotation.y = isCatFacing ? -0.10 : Math.PI + 0.10;
     this.mouseLabelLMat.map = makeMouseLabelTexture('L', isCatFacing);
     this.mouseLabelRMat.map = makeMouseLabelTexture('R', isCatFacing);
     this.mouseLabelLMat.needsUpdate = true;
@@ -912,8 +996,11 @@ export class KeyboardAndMouse3D {
     this.boardH = 0.112;
     this.capH = is108 ? 0.048 : 0.056;
 
-    this.boardGroup.position.set(0.24, 0.015, 1.08);
-    this.mouseHome.set(is108 ? -1.46 : -1.16, 0.015, 0.96);
+    // 'viewer' mirrors the desk around the cat: keyboard left of centre, mouse on the right.
+    const deskSign = isCatFacing ? 1 : -1;
+    this.boardGroup.position.set(0.24 * deskSign, 0.015, 1.08);
+    this.boardGroup.rotation.set(0.06, -0.042 * deskSign, 0);
+    this.mouseHome.set((is108 ? -1.46 : -1.16) * deskSign, 0.015, 0.96);
 
     // Soft grounded desk shadow under keyboard
     const kbShadowGeo = new THREE.PlaneGeometry(W * 1.18, D * 1.38);
@@ -1087,16 +1174,19 @@ export class KeyboardAndMouse3D {
     const k = this.keys.get(id);
     this.deskGroup.updateMatrixWorld(false);
     this.boardGroup.updateMatrixWorld(false);
-    if (!k) return out.set(0.24, this.boardH + this.capH, 1.08);
+    if (!k) return out.set(this.boardGroup.position.x, this.boardH + this.capH, 1.08);
     return out
       .set(k.x, this.boardH + 0.008 + this.capH - k.depth, k.z)
       .applyMatrix4(this.boardGroup.matrixWorld);
   }
 
+  /** Keys on the tail's edge of the board: the right edge in 'cat', the left edge in 'viewer'. */
   public isRightEdgeTailKey(id: string): boolean {
     const k = this.keys.get(id);
     if (!k) return false;
-    return k.x >= this.boardWidth * 0.22;
+    return this.orientation === 'viewer'
+      ? k.x <= -this.boardWidth * 0.22
+      : k.x >= this.boardWidth * 0.22;
   }
 
   public setMouseNormalized(nx: number, ny: number): void {

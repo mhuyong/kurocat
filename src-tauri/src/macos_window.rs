@@ -173,7 +173,7 @@ pub fn configure_fullscreen(window: &WebviewWindow, always_on_top: bool) {
 }
 
 pub fn create_display_menu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
-    let menu = Submenu::with_id(app, "mac_display_menu", "选择显示器", true)?;
+    let menu = Submenu::with_id(app, "mac_display_menu", crate::i18n::ui("display.menu"), true)?;
     app.manage(DisplayMenu(menu.clone()));
     refresh_menu(app)?;
 
@@ -217,11 +217,12 @@ pub fn refresh_menu(app: &AppHandle) -> tauri::Result<()> {
         menu.0.remove_at(index)?;
     }
     for (index, display) in connected.iter().enumerate() {
-        let label = if index == 0 {
-            format!("{}（主显示器）", display.name)
+        let role = if index == 0 {
+            crate::i18n::ui("display.primary")
         } else {
-            format!("{}（显示器 {}）", display.name, index + 1)
+            crate::i18n::uif("display.numbered", &[("n", (index + 1).to_string())])
         };
+        let label = crate::i18n::uif("display.named", &[("name", display.name.clone()), ("role", role)]);
         let item = CheckMenuItem::with_id(
             app,
             format!("{DISPLAY_ITEM_PREFIX}{}", display.id),
@@ -235,7 +236,7 @@ pub fn refresh_menu(app: &AppHandle) -> tauri::Result<()> {
     let free = CheckMenuItem::with_id(
         app,
         FREE_PLACEMENT_ITEM,
-        "自由摆放",
+        crate::i18n::ui("display.free"),
         true,
         preferred.is_none(),
         None::<&str>,

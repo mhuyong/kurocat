@@ -239,14 +239,14 @@ fn refresh_menu(app: &AppHandle, displays: &[Display]) -> tauri::Result<()> {
     }
     for (index, display) in displays.iter().enumerate() {
         let role = if display.primary {
-            "主显示器".to_owned()
+            crate::i18n::ui("display.primary")
         } else {
-            format!("显示器 {}", index + 1)
+            crate::i18n::uif("display.numbered", &[("n", (index + 1).to_string())])
         };
         let label = if display.name.is_empty() {
             role
         } else {
-            format!("{}（{}）", display.name, role)
+            crate::i18n::uif("display.named", &[("name", display.name.clone()), ("role", role)])
         };
         menu.0.append(&CheckMenuItem::with_id(
             app,
@@ -260,7 +260,7 @@ fn refresh_menu(app: &AppHandle, displays: &[Display]) -> tauri::Result<()> {
     menu.0.append(&CheckMenuItem::with_id(
         app,
         FREE_PLACEMENT_ITEM,
-        "自由摆放",
+        crate::i18n::ui("display.free"),
         true,
         preferred.is_none(),
         None::<&str>,
@@ -268,7 +268,7 @@ fn refresh_menu(app: &AppHandle, displays: &[Display]) -> tauri::Result<()> {
 }
 
 pub fn create_menu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
-    let menu = Submenu::with_id(app, "win_display_menu", "选择显示器", true)?;
+    let menu = Submenu::with_id(app, "win_display_menu", crate::i18n::ui("display.menu"), true)?;
     app.manage(DisplayMenu(menu.clone()));
     if let Some(window) = app.get_webview_window("main") {
         let displays = connected_displays(&window);

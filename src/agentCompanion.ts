@@ -1,6 +1,10 @@
 import { catAudio } from './audio';
 import { t } from './i18n';
 import { keyForChar, type TypedKey } from './keyboardLayout';
+import { getAiLegendScript, setAiLegendScript } from './inputLang';
+
+/** After the last typed key the legends return to the owner's language within this time. */
+const LEGEND_RETURN_MS = 250;
 
 export type AgentStatusKind = 'working' | 'thinking' | 'waiting' | 'done' | 'error' | 'idle';
 export type AgentActionKind =
@@ -96,6 +100,7 @@ export class AgentCompanionController {
   private burstRemaining = 0;
   private lastSoundAt = 0;
   private typedQueue: TypedKey[] = [];
+  private legendReturnTimer: number | null = null;
   /** The text the queue holds, so a duplicate event (PreToolUse + PostToolUse) does not restart it. */
   private queuedText = '';
 
@@ -132,12 +137,15 @@ export class AgentCompanionController {
   }
 
   private dropTypedText(): void {
+    this.setLegendScript(null);
     this.typedQueue = [];
     this.queuedText = '';
   }
 
   /** Pause synthetic coding keystrokes briefly so the user's real keyboard/mouse always wins. */
   public notifyRealUserInput(): void {
+    // The owner's own typing always uses the owner's input language: legends go back at once.
+    this.setLegendScript(null);
     if (!this.autoTyping) return;
     this.realUserInputUntil = performance.now() + 1800;
     this.releaseAllVirtualKeys();
@@ -316,6 +324,7 @@ export class AgentCompanionController {
         `dropped has_text=${Boolean(text)} privacy=${this.privacyPaused} allow=${this.allowTypedText()}`,
       );
       // A new event replaces whatever is still queued, also when it has no text to type.
+      this.setLegendScript(null);
       this.typedQueue = [];
       return false;
     }
@@ -337,6 +346,15 @@ export class AgentCompanionController {
     return keys.length > 0;
   }
 
+  /** Keycap legends follow the AI text's script while it types; null = the owner's language. */
+  private setLegendScript(script: 'th' | 'latin' | null): void {
+    if (this.legendReturnTimer !== null) {
+      window.clearTimeout(this.legendReturnTimer);
+      this.legendReturnTimer = null;
+    }
+    if (setAiLegendScript(script)) this.debugLog('ui.legend', `script=${script ?? 'owner'}`);
+  }
+
   private startAutoTyping(): void {
     if (this.autoTyping) return;
     this.autoTyping = true;
@@ -346,6 +364,7 @@ export class AgentCompanionController {
 
   private stopAutoTyping(): void {
     this.autoTyping = false;
+    this.setLegendScript(null);
     this.typedQueue = [];
     if (this.typeTimer !== null) {
       window.clearTimeout(this.typeTimer);
@@ -387,6 +406,9 @@ export class AgentCompanionController {
       if (this.typedQueue.length > 0 && !this.allowTypedText()) this.dropTypedText();
       const typed = this.typedQueue.shift();
       if (typed) {
+        // Per run of characters: a Thai or Latin character sets the legends, a space keeps them.
+        // A text (or the start of one) with no letter yet shows the Latin legends.
+        if (!this.privacyPaused) this.setLegendScript(typed.script ?? getAiLegendScript() ?? 'latin');
         if (target) {
           if (this.heldVirtualVks.delete(typed.vk)) target.onKeyUp(typed.vk);
           target.onKeyDown(typed.vk, false, { synthetic: true, bubble: typed.bubble });
@@ -399,6 +421,13 @@ export class AgentCompanionController {
           }, 45 + Math.floor(Math.random() * 15));
           this.releaseTimers.add(rid);
         }
+        // After the last key the legends go back to the owner's language soon, not at the next tick.
+        if (this.typedQueue.length === 0) {
+          this.legendReturnTimer = window.setTimeout(() => {
+            this.legendReturnTimer = null;
+            if (this.typedQueue.length === 0) this.setLegendScript(null);
+          }, LEGEND_RETURN_MS);
+        }
         // When the text is done and the AI still works, the quiet pretend-typing takes over.
         this.burstRemaining = 5 + Math.floor(Math.random() * 7);
         this.scheduleNextVirtualKey(
@@ -408,6 +437,8 @@ export class AgentCompanionController {
         );
         return;
       }
+      // The text is done (or none): the legends follow the owner's input language again.
+      this.setLegendScript(null);
       if (target) {
         const vk = CODING_VKS[Math.floor(Math.random() * CODING_VKS.length)];
         target.onKeyDown(vk, false, SYNTHETIC);

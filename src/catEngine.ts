@@ -242,6 +242,8 @@ export class KuroCatEngine {
   private gameActive = false;
   private kbCacheCanvas: HTMLCanvasElement | null = null;
   private kbCacheKey = '';
+  /** The previous keyboard cache canvases (the other legend script), so a switch does not redraw. */
+  private kbCacheSpare = new Map<string, HTMLCanvasElement>();
   private lastActivityAt = 0;
   private lastTime = 0;
   private elapsed = 0;
@@ -970,6 +972,11 @@ export class KuroCatEngine {
       this.kbCacheCanvas = null;
       this.kbCacheKey = '';
     }
+    for (const c of this.kbCacheSpare.values()) {
+      c.width = 0;
+      c.height = 0;
+    }
+    this.kbCacheSpare.clear();
     this.canvas.width = 0;
     this.canvas.height = 0;
   }
@@ -4039,6 +4046,29 @@ export class KuroCatEngine {
       const cacheLogW = Math.ceil(botHalfW * 2 + padMargin * 2);
       const cacheLogH = Math.ceil(this.kbHeight + padMargin * 2);
       const nextKey = `${this.keyboardLayout}|${this.keyboardOrientation}|${this.kbWidth}|${this.kbHeight}|${cacheScale}|${thaiLegendMode()}`;
+
+      if (this.kbCacheCanvas && this.kbCacheKey !== nextKey) {
+        // Park the current canvas and take the spare for the new key when there is one; at most
+        // two canvases are kept (the two legend scripts), anything older is released.
+        this.kbCacheSpare.set(this.kbCacheKey, this.kbCacheCanvas);
+        const spare = this.kbCacheSpare.get(nextKey);
+        if (spare) {
+          this.kbCacheSpare.delete(nextKey);
+          this.kbCacheCanvas = spare;
+          this.kbCacheKey = nextKey;
+        } else {
+          this.kbCacheCanvas = null;
+        }
+        while (this.kbCacheSpare.size > 1) {
+          const oldest = this.kbCacheSpare.keys().next().value as string;
+          const c = this.kbCacheSpare.get(oldest);
+          if (c) {
+            c.width = 0;
+            c.height = 0;
+          }
+          this.kbCacheSpare.delete(oldest);
+        }
+      }
 
       if (!this.kbCacheCanvas || this.kbCacheKey !== nextKey) {
         if (!this.kbCacheCanvas) this.kbCacheCanvas = document.createElement('canvas');

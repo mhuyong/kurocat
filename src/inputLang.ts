@@ -52,8 +52,44 @@ export function isThaiInput(): boolean {
 }
 
 export function thaiLegendMode(): ThaiLegendMode {
+  // While the AI types, the board follows the script of the AI's text (see setAiLegendScript).
+  if (aiLegendScript !== null) return aiLegendScript === 'th' ? 'main' : 'off';
   if (followsInputLang()) return inputLang === 'th' ? 'main' : 'off';
   return getActiveLocale() === 'th-TH' ? 'second' : 'off';
+}
+
+/** Script of the AI text being typed right now; null = follow the owner's input language. */
+export type AiLegendScript = 'th' | 'latin';
+let aiLegendScript: AiLegendScript | null = null;
+const legendListeners = new Set<() => void>();
+
+/**
+ * While the AI types, the keycap legends follow the script of its text (Thai text -> Thai
+ * legends, Latin text -> Latin legends) whatever the Windows input language is. null hands the
+ * legends back to the owner's input language. Only the legends are affected: the owner's own key
+ * bubbles keep using the input language (`isThaiInput`). Returns true when it changed.
+ */
+export function setAiLegendScript(script: AiLegendScript | null): boolean {
+  if (script === aiLegendScript) return false;
+  aiLegendScript = script;
+  for (const fn of legendListeners) {
+    try {
+      fn();
+    } catch {
+      // a listener must never break the others
+    }
+  }
+  return true;
+}
+
+export function getAiLegendScript(): AiLegendScript | null {
+  return aiLegendScript;
+}
+
+/** Called after the AI's legend script changes (the engines re-draw their keycaps). */
+export function onAiLegendScriptChange(fn: () => void): () => void {
+  legendListeners.add(fn);
+  return () => legendListeners.delete(fn);
 }
 
 /**

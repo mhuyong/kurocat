@@ -23,6 +23,7 @@ import {
   inputLangBubbleLabel,
   noteKeyForShift,
   onInputLangChange,
+  onAiLegendScriptChange,
   resetShift,
   setInputLang,
 } from './inputLang';
@@ -1221,6 +1222,11 @@ async function bootstrap(): Promise<void> {
     const label = inputLangBubbleLabel(lang);
     if (active3d && engine3d) engine3d.showInputLangBubble(label);
     else engine.showInputLangBubble(label);
+  });
+  // The AI's typing switches the legends by the script of its text; the same re-draw applies.
+  onAiLegendScriptChange(() => {
+    engine.refreshKeyLegends();
+    engine3d?.refreshKeyLegends();
   });
   await listen<{ lang: string }>('kuro-input-lang', (ev) => {
     setInputLang(ev.payload);

@@ -327,6 +327,8 @@ const CHAR_KEY_ID_BY_VK: ReadonlyMap<number, string> = (() => {
 export interface TypedKey {
   vk: number;
   bubble: string;
+  /** Script of the character: 'th', 'latin', or null (space: keeps whatever is showing). */
+  script: 'th' | 'latin' | null;
 }
 
 /**
@@ -337,7 +339,12 @@ export interface TypedKey {
 const TYPED_KEY_BY_CHAR: ReadonlyMap<string, TypedKey> = (() => {
   const m = new Map<string, TypedKey>();
   const put = (ch: string, vk: number, bubble = ch) => {
-    if (!m.has(ch)) m.set(ch, { vk, bubble });
+    if (!m.has(ch)) {
+      // Only letters give a script. Digits, punctuation and space exist on both layouts and keep
+      // the layout of the run they are in.
+      const script = /[฀-๿]/.test(ch) ? 'th' : /[A-Za-z]/.test(ch) ? 'latin' : null;
+      m.set(ch, { vk, bubble, script });
+    }
   };
   put(' ', 0x20, '␣');
   for (let c = 0; c < 26; c++) {

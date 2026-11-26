@@ -184,6 +184,14 @@ html.win7-ulw-mode #collar-row {
   border-radius: 5px;
 }
 
+/* A one-line explanation under a menu toggle. */
+.menu-note {
+  padding: 0 10px 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #9ca3af;
+}
+
 .menu-hint.copied {
   color: #111214;
   background: #c8f538;

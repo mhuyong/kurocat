@@ -207,6 +207,9 @@ pub struct AppSettings {
     pub fps_cap: u16,
     #[serde(default = "default_language")]
     pub language: String,
+    /// "Show what the AI types": the pet types the AI's real text (filtered). Default off.
+    #[serde(default)]
+    pub show_ai_typing: bool,
 }
 
 impl Default for AppSettings {
@@ -240,6 +243,7 @@ impl Default for AppSettings {
             headphone_mode: default_headphone_mode(),
             fps_cap: default_fps_cap(),
             language: default_language(),
+            show_ai_typing: false,
         }
     }
 }
@@ -287,11 +291,13 @@ pub fn load_settings() -> AppSettings {
             parsed.fps_cap = normalize_fps_cap(parsed.fps_cap);
             parsed.language = normalize_language(&parsed.language);
             crate::i18n::set_ui_language(&parsed.language);
+            crate::ai_typing::set_enabled(parsed.show_ai_typing);
             return parsed;
         }
     }
     let defaults = AppSettings::default();
     crate::i18n::set_ui_language(&defaults.language);
+    crate::ai_typing::set_enabled(defaults.show_ai_typing);
     defaults
 }
 
@@ -301,6 +307,7 @@ pub fn save_settings(settings: &AppSettings) {
 
 pub fn try_save_settings(settings: &AppSettings) -> std::io::Result<()> {
     crate::i18n::set_ui_language(&settings.language);
+    crate::ai_typing::set_enabled(settings.show_ai_typing);
     static NEXT_WRITE: AtomicUsize = AtomicUsize::new(0);
     let path = config_path();
     if let Some(parent) = path.parent() {
@@ -557,5 +564,6 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(legacy).expect("legacy json should parse");
         assert_eq!(parsed.tail_key_mode, "smart");
         assert_eq!(parsed.tail_key_ids, default_tail_key_ids());
+        assert!(!parsed.show_ai_typing, "showAiTyping must default to off");
     }
 }

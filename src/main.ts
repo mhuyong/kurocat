@@ -50,6 +50,7 @@ interface AppSettings {
   autostart: boolean;
   catBreed: string;
   mcpEnabled: boolean;
+  showAiTyping?: boolean;
   mcpPort: number;
   keyboardLayout: KeyboardLayoutId;
   keyboardOrientation: KeyboardOrientation;
@@ -150,6 +151,7 @@ let settings: AppSettings = {
   autostart: false,
   catBreed: 'black',
   mcpEnabled: true,
+  showAiTyping: false,
   mcpPort: 27420,
   keyboardLayout: '65',
   keyboardOrientation: 'cat',
@@ -486,6 +488,7 @@ function syncMenuUI(): void {
   setCheck('chk-top', settings.alwaysOnTop);
   setCheck('chk-autostart', settings.autostart);
   setCheck('chk-mcp', settings.mcpEnabled);
+  setCheck('chk-ai-typing', settings.showAiTyping === true);
 
   if (!sliderDragging) {
     updateScaleSliderVisual(settings.scale);
@@ -1499,6 +1502,9 @@ async function bootstrap(): Promise<void> {
         break;
       case 'toggle-mcp':
         void applySettingsPatch({ mcpEnabled: !settings.mcpEnabled });
+        break;
+      case 'toggle-ai-typing':
+        void applySettingsPatch({ showAiTyping: settings.showAiTyping !== true });
         break;
       case 'copy-mcp':
         void copyMcpConfig();

@@ -223,6 +223,8 @@
     "running_cmd": "กำลังรันคำสั่ง…",
     "researching": "กำลังค้นข้อมูล…",
     "reading_code": "กำลังอ่านโค้ด…",
+    "typed_reading": "กำลังอ่านไฟล์",
+    "typed_searching": "กำลังค้นหา",
     "collaborating": "กำลังประสานงาน…",
     "calling_tool": "กำลังใช้เครื่องมือ…",
     "thinking": "กำลังคิด…",

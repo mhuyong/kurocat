@@ -223,6 +223,8 @@
     "running_cmd": "コマンド実行中…",
     "researching": "調べています…",
     "reading_code": "コードを読んでいます…",
+    "typed_reading": "ファイル読込",
+    "typed_searching": "検索中",
     "collaborating": "連携して処理中…",
     "calling_tool": "ツールを実行中…",
     "thinking": "考え中…",

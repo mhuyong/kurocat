@@ -1229,8 +1229,13 @@ export class KuroCatEngine {
 
   // ---- Input event handlers ----
 
+  /** Debug only: what the last onKeyDown did about its keycap bubble. */
+  public lastKeyBubble: string | undefined;
+
   public onKeyDown(vk: number, repeat: boolean, opts?: KeyEventOptions): void {
+    this.lastKeyBubble = 'no_key_spec';
     if (this.privacyMode) {
+      this.lastKeyBubble = 'privacy';
       if (!repeat && !opts?.synthetic) this.onPrivacyTyping();
       return;
     }
@@ -1240,6 +1245,7 @@ export class KuroCatEngine {
     const forcedLabel = synthetic ? opts?.bubble : undefined;
     const showBubble = this.showKeyBubbles && (!synthetic || Boolean(forcedLabel));
     const bubbleVk = synthetic ? 0 : vk;
+    this.lastKeyBubble = showBubble ? 'no_label' : this.showKeyBubbles ? 'quiet_key' : 'bubbles_off';
     const now = performance.now();
     const spec = resolveKeyByVk(vk, this.keyboardLayout);
     if (!spec) return;
@@ -1300,6 +1306,7 @@ export class KuroCatEngine {
       if (showBubble) {
         const label = forcedLabel ?? keyBubbleLabel(vk, spec);
         if (label) {
+          this.lastKeyBubble = 'spawned';
           this.spawnBubble(label, spec.id === 'space', pt.x, now, bubbleVk);
         }
       }
@@ -1356,6 +1363,7 @@ export class KuroCatEngine {
       if (showBubble) {
         const label = forcedLabel ?? keyBubbleLabel(vk, spec);
         if (label) {
+          this.lastKeyBubble = 'spawned';
           this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, bubbleVk);
         }
       }
@@ -1454,7 +1462,8 @@ export class KuroCatEngine {
     if (showBubble) {
       const label = forcedLabel ?? keyBubbleLabel(vk, spec);
       if (label) {
-        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, bubbleVk);
+        this.lastKeyBubble = 'spawned';
+          this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, bubbleVk);
       }
     }
   }
@@ -1860,6 +1869,14 @@ export class KuroCatEngine {
       window.clearTimeout(this.heldGraveBubbleTimer);
       this.heldGraveBubbleTimer = 0;
     }
+  }
+
+  /** One label bubble ("reading file") with no key press; used for AI tools that type no text. */
+  public showLabelBubble(label: string): void {
+    if (!this.showKeyBubbles || this.privacyMode || !label) return;
+    const now = performance.now();
+    this.wakeRendering(now);
+    this.spawnBubble(label, false, this.kbCenterX, now);
   }
 
   public showInputLangBubble(label: string): void {

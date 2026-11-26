@@ -88,6 +88,12 @@ pub fn extract_typed_text(tool_name: &str, tool_input: Option<&Value>) -> Option
     extract_typed_text_unchecked(tool_name, tool_input?)
 }
 
+/// Length (in characters) of the raw field a tool would type, for the opt-in debug log; 0 when none.
+pub fn raw_chars(tool_name: &str, tool_input: Option<&Value>) -> usize {
+    let (Some(input), Some(family)) = (tool_input, tool_family(tool_name)) else { return 0 };
+    raw_field(family, input).map(|r| r.chars().count()).unwrap_or(0)
+}
+
 /// Why `extract_typed_text` gave nothing, as a short code for the opt-in debug log (never the
 /// text itself): "disabled", "no_input", "other_tool", "no_field", "secret_path",
 /// "secret_filter:<ids>", "empty" or "ok".
@@ -571,6 +577,13 @@ pub fn looks_secret(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn raw_chars_counts_the_field_without_filtering() {
+        assert_eq!(raw_chars("Bash", Some(&json!({"command": "git status"}))), 10);
+        assert_eq!(raw_chars("Read", Some(&json!({"file_path": "a.rs"}))), 0);
+        assert_eq!(raw_chars("Bash", None), 0);
+    }
+
     use super::*;
     use serde_json::json;
 

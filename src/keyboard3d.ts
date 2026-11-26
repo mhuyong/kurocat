@@ -945,7 +945,8 @@ export class KeyboardAndMouse3D {
     const isCatFacing = orientation === 'cat';
 
     // Sync mouse orientation (180° cat-facing vs 0° viewer-facing)
-    this.mouseShape.rotation.y = isCatFacing ? -0.10 : Math.PI - 0.10;
+    // Buttons toward the viewer in 'viewer'; the small yaw is mirrored with the desk.
+    this.mouseShape.rotation.y = isCatFacing ? -0.10 : Math.PI + 0.10;
     this.mouseLabelLMat.map = makeMouseLabelTexture('L', isCatFacing);
     this.mouseLabelRMat.map = makeMouseLabelTexture('R', isCatFacing);
     this.mouseLabelLMat.needsUpdate = true;
@@ -959,8 +960,11 @@ export class KeyboardAndMouse3D {
     this.boardH = 0.112;
     this.capH = is108 ? 0.048 : 0.056;
 
-    this.boardGroup.position.set(0.24, 0.015, 1.08);
-    this.mouseHome.set(is108 ? -1.46 : -1.16, 0.015, 0.96);
+    // 'viewer' mirrors the desk around the cat: keyboard left of centre, mouse on the right.
+    const deskSign = isCatFacing ? 1 : -1;
+    this.boardGroup.position.set(0.24 * deskSign, 0.015, 1.08);
+    this.boardGroup.rotation.set(0.06, -0.042 * deskSign, 0);
+    this.mouseHome.set((is108 ? -1.46 : -1.16) * deskSign, 0.015, 0.96);
 
     // Soft grounded desk shadow under keyboard
     const kbShadowGeo = new THREE.PlaneGeometry(W * 1.18, D * 1.38);
@@ -1134,16 +1138,19 @@ export class KeyboardAndMouse3D {
     const k = this.keys.get(id);
     this.deskGroup.updateMatrixWorld(false);
     this.boardGroup.updateMatrixWorld(false);
-    if (!k) return out.set(0.24, this.boardH + this.capH, 1.08);
+    if (!k) return out.set(this.boardGroup.position.x, this.boardH + this.capH, 1.08);
     return out
       .set(k.x, this.boardH + 0.008 + this.capH - k.depth, k.z)
       .applyMatrix4(this.boardGroup.matrixWorld);
   }
 
+  /** Keys on the tail's edge of the board: the right edge in 'cat', the left edge in 'viewer'. */
   public isRightEdgeTailKey(id: string): boolean {
     const k = this.keys.get(id);
     if (!k) return false;
-    return k.x >= this.boardWidth * 0.22;
+    return this.orientation === 'viewer'
+      ? k.x <= -this.boardWidth * 0.22
+      : k.x >= this.boardWidth * 0.22;
   }
 
   public setMouseNormalized(nx: number, ny: number): void {

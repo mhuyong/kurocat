@@ -1983,9 +1983,32 @@ export class KuroCatEngine3D {
 
   public setKeyboardConfig(layout: KeyboardLayoutId, orient: KeyboardOrientation): void {
     this.desk.rebuildBoard(layout, orient);
+    this.deskMirrored = orient === 'viewer';
+    // Frame the mirrored desk the same way (camera anchor mirrored with it).
+    this.camAnchor.x = this.deskMirrored ? -0.06 : 0.06;
+    this.lastCamKey = '';
     this.paws.L.keyId = null;
     this.paws.R.keyId = null;
+    this.paws.L.down = false;
+    this.paws.R.down = false;
     this.tailTap.keyId = null;
+    this.tailTap.down = false;
+  }
+
+  /**
+   * 'viewer' mirrors the desk around the cat (mouse on the viewer's right) and swaps the paw
+   * roles: the right paw works the mouse, the left paw types every key, and the tail leaves
+   * from the left hip. The cat body is never mirrored.
+   */
+  private deskMirrored = false;
+
+  /** +1 in 'cat' (mouse on the viewer's left), -1 in 'viewer'. */
+  private get deskSign(): 1 | -1 {
+    return this.deskMirrored ? -1 : 1;
+  }
+
+  private get mousePaw(): PawTrack3D {
+    return this.deskMirrored ? this.paws.R : this.paws.L;
   }
 
   public setTailKeyConfig(mode: TailKeyMode, keyIds: readonly string[]): void {
@@ -2143,7 +2166,14 @@ export class KuroCatEngine3D {
 
     const mousingNow = this.isMousing();
     const isLeftSideScreen = k.x < 0.05;
-    const pawKey: 'L' | 'R' = mousingNow ? 'R' : isLeftSideScreen ? 'L' : 'R';
+    // 'viewer': strict roles, the left (typing) paw takes every key incl. space.
+    const pawKey: 'L' | 'R' = this.deskMirrored
+      ? 'L'
+      : mousingNow
+        ? 'R'
+        : isLeftSideScreen
+          ? 'L'
+          : 'R';
     const paw = this.paws[pawKey];
     paw.from.copy(paw.pos);
     paw.keyId = k.spec.id;
@@ -2205,7 +2235,7 @@ export class KuroCatEngine3D {
 
     this.desk.setMouseNormalized(clamp(nx, 0, 1), clamp(ny, 0, 1));
     this.lastMouse = this.elapsed;
-    this.paws.L.lastActive = this.elapsed;
+    this.mousePaw.lastActive = this.elapsed;
   }
 
   public onWindowCursor(relX: number, relY: number, overCat: boolean): void {
@@ -2231,7 +2261,7 @@ export class KuroCatEngine3D {
   public onMouseDown(btn: string): void {
     this.wake('abrupt');
     this.lastMouse = this.elapsed;
-    this.paws.L.lastActive = this.elapsed;
+    this.mousePaw.lastActive = this.elapsed;
     if (btn === 'left') this.leftMouseDown = true;
     if (btn === 'right') this.rightMouseDown = true;
     if (btn === 'middle') this.desk.pulseScrollWheel();
@@ -2246,7 +2276,7 @@ export class KuroCatEngine3D {
   public onMouseWheel(): void {
     this.wake('abrupt');
     this.lastMouse = this.elapsed;
-    this.paws.L.lastActive = this.elapsed;
+    this.mousePaw.lastActive = this.elapsed;
     this.desk.pulseScrollWheel();
   }
 
@@ -2282,7 +2312,7 @@ export class KuroCatEngine3D {
       this.desk.setMouseNormalized(clamp(nx, 0, 1), clamp(ny, 0, 1));
       if (this.elapsed - this.lastKey > 0.45) {
         this.lastMouse = this.elapsed;
-        this.paws.L.lastActive = this.elapsed;
+        this.mousePaw.lastActive = this.elapsed;
       }
     }
 
@@ -2635,12 +2665,12 @@ export class KuroCatEngine3D {
           : null;
 
     let targetShift = 0;
-    if (mousing) targetShift = -0.24;
+    if (mousing) targetShift = -0.24 * this.deskSign;
     else if (striking && striking.keyId) {
       const kt = this.desk.keyTopWorld(striking.keyId, this.tmpV1);
-      targetShift = clamp((kt.x - 0.14) * 0.15, -0.22, 0.22);
+      targetShift = clamp((kt.x - 0.14 * this.deskSign) * 0.15, -0.22, 0.22);
     } else if (this.tailTap.reach > 0.1) {
-      targetShift = 0.08 * this.tailTap.reach;
+      targetShift = 0.08 * this.tailTap.reach * this.deskSign;
     }
 
     const targetHunch = typingActive
@@ -2860,6 +2890,8 @@ export class KuroCatEngine3D {
       }
       pt.x += Math.sin(this.tailPhase * 1.5 + i * 0.68) * 0.045 * w * tailSway;
       pt.y += Math.sin(this.tailPhase * 1.25 + i * 0.85) * 0.05 * w * w * tailSway;
+      // 'viewer': the tail leaves from the left hip (mirror of the right-hip pose).
+      if (this.deskMirrored) pt.x = -pt.x;
       this.attachLocal(pt, attached);
       loose.copy(pt).add(this.homePos);
       pt.lerpVectors(attached, loose, smoothstep(0.1, 0.7, w));
@@ -2869,10 +2901,11 @@ export class KuroCatEngine3D {
       const tipWorld = this.desk.keyTopWorld(this.tailTap.keyId, this.tailTap.tip);
       tipWorld.y += this.tailTap.hover + 0.045;
       const root = this.tailCurve.points[0];
-      this.tmpTailPath[0].set(root.x + 0.36, 0.28, root.z + 0.22);
-      this.tmpTailPath[1].set(tipWorld.x + 0.36, 0.30, mix(root.z, tipWorld.z, 0.52));
-      this.tmpTailPath[2].set(tipWorld.x + 0.26, 0.32, tipWorld.z - 0.06);
-      this.tmpTailPath[3].set(tipWorld.x + 0.12, mix(0.32, tipWorld.y + 0.02, 0.5), tipWorld.z + 0.02);
+      const ts = this.deskSign; // approach the key from the tail's side
+      this.tmpTailPath[0].set(root.x + 0.36 * ts, 0.28, root.z + 0.22);
+      this.tmpTailPath[1].set(tipWorld.x + 0.36 * ts, 0.30, mix(root.z, tipWorld.z, 0.52));
+      this.tmpTailPath[2].set(tipWorld.x + 0.26 * ts, 0.32, tipWorld.z - 0.06);
+      this.tmpTailPath[3].set(tipWorld.x + 0.12 * ts, mix(0.32, tipWorld.y + 0.02, 0.5), tipWorld.z + 0.02);
       for (let i = 1; i < this.tailCurve.points.length; i++) {
         const dst = i - 1 < 4 ? this.tmpTailPath[i - 1] : tipWorld;
         this.tailCurve.points[i].lerp(dst, this.tailTap.reach);
@@ -2891,8 +2924,10 @@ export class KuroCatEngine3D {
     );
 
     // 9) Sleek Unified KuroCat Arms + Cozy Tucked Idle Belly Paws!
-    const updatePaw = (paw: PawTrack3D, isLeft: boolean) => {
-      const activeForMouse = isLeft && mousing;
+    // 'viewer': the mouse paw also rests on the mouse while the other paw types.
+    const mouseRest = this.deskMirrored && typingActive && !this.asleep && !this.privacyMode;
+    const updatePaw = (paw: PawTrack3D, isMousePaw: boolean) => {
+      const activeForMouse = isMousePaw && (mousing || mouseRest);
       const activeForKey = Boolean(paw.keyId && (paw.down || t - paw.t0 < 0.52)) && !this.asleep && !this.privacyMode;
       const wantTuck = !activeForMouse && !activeForKey ? 1 : 0;
       paw.tuckWeight += (wantTuck - paw.tuckWeight) * approach(wantTuck ? 6.5 : 22, dt);
@@ -2926,8 +2961,8 @@ export class KuroCatEngine3D {
       paw.pos.copy(paw.spring.step(tuckHome, dt));
       paw.last.copy(paw.pos);
     };
-    updatePaw(this.paws.L, true);
-    updatePaw(this.paws.R, false);
+    updatePaw(this.paws.L, !this.deskMirrored);
+    updatePaw(this.paws.R, this.deskMirrored);
 
     for (const arm of this.arms) {
       const pawTrack = arm.s < 0 ? this.paws.L : this.paws.R;
@@ -2935,7 +2970,7 @@ export class KuroCatEngine3D {
       arm.hand.copy(pawTrack.pos);
 
       const tuck = pawTrack.tuckWeight;
-      const onMouse = arm.s < 0 && mousing;
+      const onMouse = (this.deskMirrored ? arm.s > 0 : arm.s < 0) && (mousing || mouseRest);
       const reach = arm.shoulder.distanceTo(arm.hand);
       const lift = mix(0.24, 0.06, clamp((reach - 0.85) / 0.85, 0, 1)) * (1 - tuck * 0.65);
 

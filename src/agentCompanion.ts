@@ -24,8 +24,19 @@ export interface AgentCompanionEvent {
   ts?: number;
 }
 
+/** Extra flags for an engine key event. */
+export interface KeyEventOptions {
+  /**
+   * The key was not pressed by the user (AI companion auto-typing): the paws and keycaps
+   * move as usual, but no character bubble / key popup is shown.
+   */
+  synthetic?: boolean;
+}
+
+const SYNTHETIC: KeyEventOptions = { synthetic: true };
+
 export interface AgentCompanionTarget {
-  onKeyDown(vk: number, repeat?: boolean): void;
+  onKeyDown(vk: number, repeat?: boolean, opts?: KeyEventOptions): void;
   onKeyUp(vk: number): void;
   triggerCuriousDemo(duration?: number): void;
   triggerCrossDemo(): void;
@@ -228,7 +239,7 @@ export class AgentCompanionController {
         if (target.triggerTailPatDemo) {
           target.triggerTailPatDemo();
         } else {
-          target.onKeyDown(0x0d, false);
+          target.onKeyDown(0x0d, false, SYNTHETIC);
           window.setTimeout(() => target.onKeyUp(0x0d), 140);
         }
         break;
@@ -288,7 +299,7 @@ export class AgentCompanionController {
       const target = this.getTarget();
       if (target) {
         const vk = CODING_VKS[Math.floor(Math.random() * CODING_VKS.length)];
-        target.onKeyDown(vk, false);
+        target.onKeyDown(vk, false, SYNTHETIC);
         this.heldVirtualVks.add(vk);
         const holdMs = 55 + Math.floor(Math.random() * 55);
         const rid = window.setTimeout(() => {

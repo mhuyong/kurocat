@@ -12,6 +12,7 @@ import {
   resolveKeyByVk,
 } from './keyboardLayout';
 import { keyBubbleLabel, thaiLegendMode } from './inputLang';
+import type { KeyEventOptions } from './agentCompanion';
 import { t } from './i18n';
 import { catAudio } from './audio';
 import { resolveCustomSkin, type CatSkinConfig, type ResolvedSkin } from './catSkins';
@@ -1175,7 +1176,7 @@ export class KuroCatEngine {
   /** AI Companion trigger: playful single tail pat on Enter/Space. */
   public triggerTailPatDemo(): void {
     const vk = 0x0d;
-    this.onKeyDown(vk, false);
+    this.onKeyDown(vk, false, { synthetic: true });
     window.setTimeout(() => this.onKeyUp(vk), 170);
   }
 
@@ -1221,11 +1222,13 @@ export class KuroCatEngine {
 
   // ---- Input event handlers ----
 
-  public onKeyDown(vk: number, repeat: boolean): void {
+  public onKeyDown(vk: number, repeat: boolean, opts?: KeyEventOptions): void {
     if (this.privacyMode) {
-      if (!repeat) this.onPrivacyTyping();
+      if (!repeat && !opts?.synthetic) this.onPrivacyTyping();
       return;
     }
+    // AI auto-typing moves the paws and keycaps but shows no character bubble.
+    const showBubble = this.showKeyBubbles && !opts?.synthetic;
     const now = performance.now();
     const spec = resolveKeyByVk(vk, this.keyboardLayout);
     if (!spec) return;
@@ -1283,7 +1286,7 @@ export class KuroCatEngine {
         this.shouldUseTailForKey(spec, rawKeyPt, dafeiyuMouseBusy, prevAnyKeyAt, now);
       const pt = dafeiyuUseTail ? this.getTailTargetPoint(spec) : rawKeyPt;
       this.dafeiyu.onKeyDown(vk, pt, dafeiyuLayout, repeat, dafeiyuUseTail);
-      if (this.showKeyBubbles) {
+      if (showBubble) {
         const label = keyBubbleLabel(vk, spec);
         if (label) {
           this.spawnBubble(label, spec.id === 'space', pt.x, now, vk);
@@ -1339,7 +1342,7 @@ export class KuroCatEngine {
           (0.85 + this.typingEnergy * 0.35);
       }
 
-      if (this.showKeyBubbles) {
+      if (showBubble) {
         const label = keyBubbleLabel(vk, spec);
         if (label) {
           this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, vk);
@@ -1437,7 +1440,7 @@ export class KuroCatEngine {
       other.lastActiveAt = now;
     }
 
-    if (this.showKeyBubbles) {
+    if (showBubble) {
       const label = keyBubbleLabel(vk, spec);
       if (label) {
         this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, vk);

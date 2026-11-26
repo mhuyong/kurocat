@@ -12,6 +12,7 @@ import {
   resolveKeyByVk,
 } from './keyboardLayout';
 import { keyBubbleLabel, thaiLegendMode } from './inputLang';
+import { t } from './i18n';
 import { catAudio } from './audio';
 import { resolveCustomSkin, type CatSkinConfig, type ResolvedSkin } from './catSkins';
 import { DaFeiYuRenderer, type DaFeiYuLayout } from './dafeiyuRenderer';
@@ -4127,7 +4128,7 @@ export class KuroCatEngine {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const dots = performance.now() - this.privacyTypingAt < 350 ? ' • • •' : '';
-      const label = this.catBreed === 'dafeiyu' ? '🔒 非礼勿视 · 已隐藏按键' : '🔒 密码输入中 · 已隐藏按键';
+      const label = t(this.catBreed === 'dafeiyu' ? 'privacy.plate_fish' : 'privacy.plate_cat');
       ctx.fillText(label + dots, 0, 0);
       ctx.restore();
     }

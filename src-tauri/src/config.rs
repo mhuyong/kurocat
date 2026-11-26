@@ -286,10 +286,13 @@ pub fn load_settings() -> AppSettings {
             parsed.headphone_mode = normalize_headphone_mode(&parsed.headphone_mode);
             parsed.fps_cap = normalize_fps_cap(parsed.fps_cap);
             parsed.language = normalize_language(&parsed.language);
+            crate::i18n::set_ui_language(&parsed.language);
             return parsed;
         }
     }
-    AppSettings::default()
+    let defaults = AppSettings::default();
+    crate::i18n::set_ui_language(&defaults.language);
+    defaults
 }
 
 pub fn save_settings(settings: &AppSettings) {
@@ -297,6 +300,7 @@ pub fn save_settings(settings: &AppSettings) {
 }
 
 pub fn try_save_settings(settings: &AppSettings) -> std::io::Result<()> {
+    crate::i18n::set_ui_language(&settings.language);
     static NEXT_WRITE: AtomicUsize = AtomicUsize::new(0);
     let path = config_path();
     if let Some(parent) = path.parent() {

@@ -1237,47 +1237,47 @@ pub mod macos_hook {
 
     pub fn show_macos_diagnostics_dialog() {
         let st = get_macos_input_status();
-        let ax_txt = if st.accessibility {
-            "已授权"
-        } else {
-            "未生效"
-        };
-        let listen_txt = if st.input_monitoring {
-            "已授权"
-        } else {
-            "未生效"
-        };
-        let tap_txt = if st.tap_active && st.tap_has_keyboard {
-            "运行中（键鼠）"
+        use crate::i18n::{ui, uif};
+        let ax_txt = ui(if st.accessibility { "diag.granted" } else { "diag.not_effective" });
+        let listen_txt = ui(if st.input_monitoring { "diag.granted" } else { "diag.not_effective" });
+        let tap_txt = ui(if st.tap_active && st.tap_has_keyboard {
+            "diag.tap_both"
         } else if st.tap_active {
-            "仅鼠标（缺少键盘权限）"
+            "diag.tap_mouse_only"
         } else {
-            "未运行"
-        };
-        let hid_txt = if st.hid_active {
-            "运行中（兼容 Karabiner）"
-        } else {
-            "未运行（需输入监控权限）"
-        };
-        let tip = if !st.accessibility || !st.input_monitoring {
-            "若系统设置里开关亮着但这里显示「未生效」，说明更新版本后系统权限缓存过期：请直接点击托盘「重置旧权限并重新授权」，或在系统设置中先点「-」删除旧 KuroCat 再点「+」重新添加。"
+            "diag.not_running"
+        });
+        let hid_txt = ui(if st.hid_active { "diag.hid_running" } else { "diag.hid_needs_perm" });
+        let tip = ui(if !st.accessibility || !st.input_monitoring {
+            "diag.tip_stale"
         } else if st.key_events_received == 0 {
-            "权限均已生效！请先随便敲几下键盘测试；若使用 Karabiner-Elements 仍无响应，可点击托盘「重新连接键盘监听」。"
+            "diag.tip_test"
         } else {
-            "键盘监听工作正常！"
-        };
+            "diag.tip_ok"
+        });
 
-        let msg = format!(
-            "辅助功能权限：{}\n输入监控权限：{}\nCGEventTap 通道：{}\nIOHIDManager 通道：{}\n已收到全局按键：{} 次\n\n{}",
-            ax_txt, listen_txt, tap_txt, hid_txt, st.key_events_received, tip
+        let msg = uif(
+            "diag.body",
+            &[
+                ("ax", ax_txt),
+                ("im", listen_txt),
+                ("tap", tap_txt),
+                ("hid", hid_txt),
+                ("count", st.key_events_received.to_string()),
+                ("tip", tip),
+            ],
         );
         let escaped = msg
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n");
+        let esc = |s: String| s.replace('\\', "\\\\").replace('"', "\\\"");
         let script = format!(
-            "display dialog \"{}\" with title \"KuroCat 键盘监听诊断\" buttons {{\"确定\"}} default button \"确定\"",
-            escaped
+            "display dialog \"{}\" with title \"{}\" buttons {{\"{}\"}} default button \"{}\"",
+            escaped,
+            esc(ui("diag.title")),
+            esc(ui("diag.ok")),
+            esc(ui("diag.ok"))
         );
         let _ = std::process::Command::new("osascript")
             .args(["-e", &script])

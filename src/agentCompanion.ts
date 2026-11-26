@@ -1,4 +1,5 @@
 import { catAudio } from './audio';
+import { t } from './i18n';
 
 export type AgentStatusKind = 'working' | 'thinking' | 'waiting' | 'done' | 'error' | 'idle';
 export type AgentActionKind =
@@ -130,7 +131,7 @@ export class AgentCompanionController {
         } else {
           this.stopAutoTyping();
         }
-        this.showBubble(ev.source, ev.text || '写代码中…', 'working');
+        this.showBubble(ev.source, ev.text || t('agent.coding'), 'working');
         this.scheduleTtlClear(ev.ttlMs ?? 45_000);
         break;
       }
@@ -141,14 +142,14 @@ export class AgentCompanionController {
           this.stopAutoTyping();
         }
         target?.triggerCuriousDemo(is3d ? 2.6 : 2600);
-        this.showBubble(ev.source, ev.text || '思考中…', 'thinking');
+        this.showBubble(ev.source, ev.text || t('agent.thinking'), 'thinking');
         this.scheduleTtlClear(ev.ttlMs ?? 35_000);
         break;
       }
       case 'waiting': {
         this.stopAutoTyping();
         target?.triggerCuriousDemo(is3d ? 4.2 : 4200);
-        this.showBubble(ev.source, ev.text || '等你确认操作', 'waiting');
+        this.showBubble(ev.source, ev.text || t('agent.waiting'), 'waiting');
         this.scheduleTtlClear(ev.ttlMs ?? 90_000);
         if (ev.sound !== false && this.allowSound()) {
           this.playNoticeThrottled('waiting');
@@ -162,7 +163,7 @@ export class AgentCompanionController {
         } else {
           target?.triggerCuriousDemo(is3d ? 2.2 : 2200);
         }
-        this.showBubble(ev.source, ev.text || '任务完成！', 'done');
+        this.showBubble(ev.source, ev.text || t('agent.done'), 'done');
         this.scheduleTtlClear(ev.ttlMs ?? 6_500);
         if (ev.sound !== false && this.allowSound()) {
           this.playNoticeThrottled('done');
@@ -172,7 +173,7 @@ export class AgentCompanionController {
       case 'error': {
         this.stopAutoTyping();
         target?.triggerCrossDemo();
-        this.showBubble(ev.source, ev.text || '任务出错了', 'error');
+        this.showBubble(ev.source, ev.text || t('agent.error'), 'error');
         this.scheduleTtlClear(ev.ttlMs ?? 8_500);
         if (ev.sound !== false && this.allowSound()) {
           this.playNoticeThrottled('error');

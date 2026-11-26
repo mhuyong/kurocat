@@ -747,7 +747,7 @@ async function confirmTailPicker(): Promise<void> {
     });
   } catch (error) {
     console.error('保存自定义尾巴按键失败', error);
-    tailPickerStatusOverride = '保存失败，请重试';
+    tailPickerStatusOverride = t('toast.tail_save_failed');
     syncTailPickerSelection();
     return;
   } finally {
@@ -986,14 +986,14 @@ async function triggerInstallUpdate(): Promise<void> {
   if (updateBusy || !latestUpdateInfo || !latestUpdateInfo.hasUpdate) return;
   updateBusy = true;
   closeContextMenu();
-  showUpdateToast(`⏳ 正在下载 v${latestUpdateInfo.latestVersion}...`, { busy: true });
-  setUpdateHint('下载中...', 'ready');
+  showUpdateToast(`⏳ ${t('toast.downloading', { ver: latestUpdateInfo.latestVersion })}`, { busy: true });
+  setUpdateHint(t('menu.downloading_short'), 'ready');
   try {
     await invoke('install_update', { info: latestUpdateInfo });
   } catch (err) {
     updateBusy = false;
     const msg = typeof err === 'string' ? err : String(err);
-    setUpdateHint('更新失败', 'error');
+    setUpdateHint(t('menu.update_failed'), 'error');
     showUpdateToast(`⚠ ${msg}`, { showOpen: true, autoHideMs: 6500 });
   }
 }

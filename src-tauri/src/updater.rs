@@ -220,7 +220,7 @@ fn parse_http_url(url: &str) -> Result<(bool, String, u16, String), String> {
     } else if let Some(r) = url.strip_prefix("http://") {
         (false, r)
     } else {
-        return Err(format!("不支持的更新地址协议: {}", url));
+        return Err(crate::i18n::uif("updater.err_bad_scheme", &[("url", url.to_string())]));
     };
 
     let (authority, path_and_query) = match rest.find('/') {
@@ -228,7 +228,7 @@ fn parse_http_url(url: &str) -> Result<(bool, String, u16, String), String> {
         None => (rest, "/"),
     };
     if authority.is_empty() {
-        return Err("更新地址缺少主机名".to_string());
+        return Err(crate::i18n::ui("updater.err_no_host"));
     }
 
     let default_port = if is_https { 443 } else { 80 };
@@ -454,7 +454,7 @@ mod winhttp_client {
         };
         if session_raw.is_null() {
             let err = unsafe { GetLastError() };
-            return Err(format!("初始化 WinHTTP 会话失败 (错误码 {})", err));
+            return Err(crate::i18n::uif("updater.err_session", &[("code", err.to_string())]));
         }
         let session = Handle(session_raw);
 
@@ -483,7 +483,7 @@ mod winhttp_client {
         let connect_raw = unsafe { WinHttpConnect(session.0, host_w.as_ptr(), port, 0) };
         if connect_raw.is_null() {
             let err = unsafe { GetLastError() };
-            return Err(format!("连接更新服务器失败 (错误码 {})", err));
+            return Err(crate::i18n::uif("updater.err_connect", &[("code", err.to_string())]));
         }
         let connect = Handle(connect_raw);
 
@@ -503,7 +503,7 @@ mod winhttp_client {
         };
         if req_raw.is_null() {
             let err = unsafe { GetLastError() };
-            return Err(format!("创建更新请求失败 (错误码 {})", err));
+            return Err(crate::i18n::uif("updater.err_request", &[("code", err.to_string())]));
         }
         let request = Handle(req_raw);
 
@@ -518,13 +518,13 @@ mod winhttp_client {
         };
         if sent == 0 {
             let err = unsafe { GetLastError() };
-            return Err(format!("连接 GitHub 检查更新失败，请检查网络或代理 (错误码 {})", err));
+            return Err(crate::i18n::uif("updater.err_send", &[("code", err.to_string())]));
         }
 
         let received = unsafe { WinHttpReceiveResponse(request.0, null_mut()) };
         if received == 0 {
             let err = unsafe { GetLastError() };
-            return Err(format!("等待 GitHub 响应失败，请检查网络或代理 (错误码 {})", err));
+            return Err(crate::i18n::uif("updater.err_receive", &[("code", err.to_string())]));
         }
 
         let mut status_code: u32 = 0;
@@ -541,10 +541,10 @@ mod winhttp_client {
         };
         if got_status == 0 {
             let err = unsafe { GetLastError() };
-            return Err(format!("读取 HTTP 状态码失败 (错误码 {})", err));
+            return Err(crate::i18n::uif("updater.err_status_read", &[("code", err.to_string())]));
         }
         if !(200..=299).contains(&status_code) {
-            return Err(format!("服务器返回 HTTP {}", status_code));
+            return Err(crate::i18n::uif("updater.err_http_status", &[("code", status_code.to_string())]));
         }
 
         let mut buf = vec![0u8; 32 * 1024];
@@ -552,7 +552,7 @@ mod winhttp_client {
             let mut available: u32 = 0;
             if unsafe { WinHttpQueryDataAvailable(request.0, &mut available) } == 0 {
                 let err = unsafe { GetLastError() };
-                return Err(format!("读取网络数据流失败 (错误码 {})", err));
+                return Err(crate::i18n::uif("updater.err_stream", &[("code", err.to_string())]));
             }
             if available == 0 {
                 break;
@@ -571,7 +571,7 @@ mod winhttp_client {
                 } == 0
                 {
                     let err = unsafe { GetLastError() };
-                    return Err(format!("读取响应内容失败 (错误码 {})", err));
+                    return Err(crate::i18n::uif("updater.err_read", &[("code", err.to_string())]));
                 }
                 if bytes_read == 0 {
                     break;
@@ -591,7 +591,7 @@ fn fetch_json_from_url(url: &str, accept: Option<&str>, timeout_ms: i32) -> Resu
     let mut body = Vec::with_capacity(8192);
     winhttp_client::get_stream(url, &ua, accept, timeout_ms, |chunk| {
         if body.len() + chunk.len() > 2 * 1024 * 1024 {
-            return Err("更新接口响应过大".to_string());
+            return Err(crate::i18n::ui("updater.err_too_large"));
         }
         body.extend_from_slice(chunk);
         Ok(())
@@ -599,7 +599,7 @@ fn fetch_json_from_url(url: &str, accept: Option<&str>, timeout_ms: i32) -> Resu
 
     let text = String::from_utf8_lossy(&body).trim().to_string();
     if text.is_empty() {
-        return Err("更新接口返回空响应".to_string());
+        return Err(crate::i18n::ui("updater.err_empty"));
     }
     Ok(text)
 }
@@ -643,20 +643,20 @@ fn fetch_json_from_url(url: &str, accept: &str, connect_secs: &str, max_secs: &s
             url,
         ])
         .output()
-        .map_err(|e| format!("无法调用 curl 检查更新: {}", e))?;
+        .map_err(|e| crate::i18n::uif("updater.err_curl", &[("err", e.to_string())]))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
-            "连接更新服务器失败，请检查网络或代理".to_string()
+            crate::i18n::ui("updater.err_connect_generic")
         } else {
-            format!("检查更新失败: {}", stderr)
+            crate::i18n::uif("updater.err_check", &[("err", stderr)])
         });
     }
 
     let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if text.is_empty() {
-        return Err("更新接口返回空响应".to_string());
+        return Err(crate::i18n::ui("updater.err_empty"));
     }
     Ok(text)
 }
@@ -676,7 +676,7 @@ fn fetch_latest_release_json() -> Result<String, String> {
 pub fn check_latest_update() -> Result<UpdateInfo, String> {
     let raw_json = fetch_latest_release_json()?;
     let rel: GhRelease = serde_json::from_str(&raw_json)
-        .map_err(|e| format!("解析最新版本信息失败: {}", e))?;
+        .map_err(|e| crate::i18n::uif("updater.err_parse", &[("err", e.to_string())]))?;
 
     let latest_clean = rel
         .tag_name
@@ -753,7 +753,7 @@ fn download_and_verify_windows(url: &str, dest: &PathBuf, expected_sha256: Optio
     let part_path = dest.with_extension("part");
     let _ = std::fs::remove_file(&part_path);
     let mut file = std::fs::File::create(&part_path)
-        .map_err(|e| format!("无法创建下载临时文件: {}", e))?;
+        .map_err(|e| crate::i18n::uif("updater.err_temp_file", &[("err", e.to_string())]))?;
 
     let ua = format!("KuroCat/{}", CURRENT_VERSION);
     let mut hasher = Sha256::new();
@@ -761,7 +761,7 @@ fn download_and_verify_windows(url: &str, dest: &PathBuf, expected_sha256: Optio
 
     let download_res = winhttp_client::get_stream(url, &ua, None, 180_000, |chunk| {
         file.write_all(chunk)
-            .map_err(|e| format!("写入安装包失败: {}", e))?;
+            .map_err(|e| crate::i18n::uif("updater.err_write", &[("err", e.to_string())]))?;
         hasher.update(chunk);
         total_bytes += chunk.len() as u64;
         Ok(())
@@ -775,7 +775,7 @@ fn download_and_verify_windows(url: &str, dest: &PathBuf, expected_sha256: Optio
 
     if total_bytes < 500_000 {
         let _ = std::fs::remove_file(&part_path);
-        return Err("下载文件不完整".to_string());
+        return Err(crate::i18n::ui("updater.err_incomplete"));
     }
 
     if let Some(expected) = expected_sha256 {
@@ -784,7 +784,7 @@ fn download_and_verify_windows(url: &str, dest: &PathBuf, expected_sha256: Optio
             let actual = hasher.finish_hex();
             if actual != expected_clean {
                 let _ = std::fs::remove_file(&part_path);
-                return Err(format!("SHA-256 校验失败: {}", actual));
+                return Err(crate::i18n::uif("updater.err_sha", &[("hash", actual)]));
             }
         }
     }
@@ -792,7 +792,7 @@ fn download_and_verify_windows(url: &str, dest: &PathBuf, expected_sha256: Optio
     let _ = std::fs::remove_file(dest);
     std::fs::rename(&part_path, dest).map_err(|e| {
         let _ = std::fs::remove_file(&part_path);
-        format!("保存安装包失败: {}", e)
+        crate::i18n::uif("updater.err_save", &[("err", e.to_string())])
     })?;
     Ok(())
 }
@@ -838,7 +838,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
         emit_progress(
             app,
             "up_to_date",
-            format!("已在浏览器打开 v{} Win7 兼容整合包下载页", info.latest_version),
+            crate::i18n::uif("updater.win7_opened", &[("ver", info.latest_version.clone())]),
             Some(info.clone()),
         );
         return Ok(());
@@ -847,7 +847,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
     let url = info
         .download_url
         .as_deref()
-        .ok_or_else(|| "未找到匹配的 Windows 更新包".to_string())?;
+        .ok_or_else(|| crate::i18n::ui("updater.err_no_win_asset"))?;
     let asset_name = info
         .asset_name
         .as_deref()
@@ -856,7 +856,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
     emit_progress(
         app,
         "downloading",
-        format!("正在下载 v{}...", info.latest_version),
+        crate::i18n::uif("updater.downloading", &[("ver", info.latest_version.clone())]),
         Some(info.clone()),
     );
 
@@ -870,7 +870,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
     emit_progress(
         app,
         "installing",
-        format!("校验通过，正在安装 v{} 并重启...", info.latest_version),
+        crate::i18n::uif("updater.installing_verified", &[("ver", info.latest_version.clone())]),
         Some(info.clone()),
     );
 
@@ -880,7 +880,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
         // Launch Tauri NSIS installer in passive auto-relaunch update mode (/P /R /UPDATE),
         // breaking away from our kill-on-close Job Object so it survives `app.exit(0)`.
         spawn_detached_windows(&target_file, &["/P", "/R", "/UPDATE"])
-            .map_err(|e| format!("启动安装程序失败: {}", e))?;
+            .map_err(|e| crate::i18n::uif("updater.err_launch_installer", &[("err", e.to_string())]))?;
     } else {
         // Zero-PowerShell portable atomic swap: Windows allows renaming a running .exe in place,
         // so we move the running binary aside, copy the verified new binary into place, and launch
@@ -891,11 +891,11 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
         let _ = std::fs::remove_file(&old_exe);
 
         std::fs::rename(&current_exe, &old_exe)
-            .map_err(|e| format!("备份旧版本程序失败: {}", e))?;
+            .map_err(|e| crate::i18n::uif("updater.err_backup", &[("err", e.to_string())]))?;
 
         if let Err(e) = std::fs::copy(&target_file, &current_exe) {
             let _ = std::fs::rename(&old_exe, &current_exe);
-            return Err(format!("替换新版本程序失败: {}", e));
+            return Err(crate::i18n::uif("updater.err_replace", &[("err", e.to_string())]));
         }
         let _ = std::fs::remove_file(&target_file);
 
@@ -907,7 +907,7 @@ fn install_windows_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), Stri
         ) {
             let _ = std::fs::remove_file(&current_exe);
             let _ = std::fs::rename(&old_exe, &current_exe);
-            return Err(format!("启动新版本程序失败: {}", e));
+            return Err(crate::i18n::uif("updater.err_launch_new", &[("err", e.to_string())]));
         }
     }
 
@@ -943,7 +943,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
     let url = info
         .download_url
         .as_deref()
-        .ok_or_else(|| "未找到匹配的 macOS 更新包".to_string())?;
+        .ok_or_else(|| crate::i18n::ui("updater.err_no_mac_asset"))?;
     let asset_name = info
         .asset_name
         .as_deref()
@@ -960,7 +960,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
     emit_progress(
         app,
         "downloading",
-        format!("正在下载 macOS v{}...", info.latest_version),
+        crate::i18n::uif("updater.downloading_mac", &[("ver", info.latest_version.clone())]),
         Some(info.clone()),
     );
 
@@ -983,10 +983,10 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
             url,
         ])
         .output()
-        .map_err(|e| format!("下载失败: {}", e))?;
+        .map_err(|e| crate::i18n::uif("updater.err_download", &[("err", e.to_string())]))?;
 
     if !dl.status.success() {
-        return Err("下载 macOS 更新包失败".to_string());
+        return Err(crate::i18n::ui("updater.err_download_mac"));
     }
 
     // Verify SHA-256 if GitHub Release provided a digest
@@ -994,17 +994,17 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
         emit_progress(
             app,
             "verifying",
-            "正在校验安装包完整性...",
+            crate::i18n::ui("updater.verifying"),
             Some(info.clone()),
         );
         let shasum = Command::new("/usr/bin/shasum")
             .args(["-a", "256", archive_path.to_str().unwrap_or("")])
             .output()
-            .map_err(|e| format!("校验失败: {}", e))?;
+            .map_err(|e| crate::i18n::uif("updater.err_verify", &[("err", e.to_string())]))?;
         let out_str = String::from_utf8_lossy(&shasum.stdout);
         let actual = out_str.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
         if actual != expected_sha.to_ascii_lowercase() {
-            return Err("安装包 SHA-256 校验未通过".to_string());
+            return Err(crate::i18n::ui("updater.err_sha_mac"));
         }
     }
 
@@ -1018,9 +1018,9 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
             extract_dir.to_str().unwrap_or(""),
         ])
         .output()
-        .map_err(|e| format!("解压失败: {}", e))?;
+        .map_err(|e| crate::i18n::uif("updater.err_unpack", &[("err", e.to_string())]))?;
     if !untar.status.success() {
-        return Err("解压更新包失败".to_string());
+        return Err(crate::i18n::ui("updater.err_unpack_mac"));
     }
 
     // Find extracted .app (KuroCat.app or KuroCatPet.app)
@@ -1036,7 +1036,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
                 }
             })
         })
-        .ok_or_else(|| "更新包内未找到 .app 程序".to_string())?;
+        .ok_or_else(|| crate::i18n::ui("updater.err_no_app"))?;
 
     // Clear quarantine flag so macOS Gatekeeper won't block the freshly updated open-source app
     let _ = Command::new("/usr/bin/xattr")
@@ -1046,7 +1046,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
     emit_progress(
         app,
         "installing",
-        format!("正在安装 v{} 并重启...", info.latest_version),
+        crate::i18n::uif("updater.installing", &[("ver", info.latest_version.clone())]),
         Some(info.clone()),
     );
 
@@ -1083,7 +1083,7 @@ fn install_macos_update(app: &AppHandle, info: &UpdateInfo) -> Result<(), String
     Command::new("/bin/sh")
         .args(["-c", &swap_sh])
         .spawn()
-        .map_err(|e| format!("启动更新脚本失败: {}", e))?;
+        .map_err(|e| crate::i18n::uif("updater.err_script", &[("err", e.to_string())]))?;
 
     // Immediately pause hooks, close overlays & release the single-instance lock so the
     // NSIS installer or restarted portable binary never hits a file/mutex race (#73, #74).
@@ -1104,7 +1104,7 @@ pub fn perform_update_install(app: &AppHandle, info: UpdateInfo) -> Result<(), S
         emit_progress(
             app,
             "up_to_date",
-            format!("已是最新版本 v{}", info.current_version),
+            crate::i18n::uif("updater.up_to_date", &[("ver", info.current_version.clone())]),
             Some(info),
         );
         return Ok(());
@@ -1127,7 +1127,7 @@ pub fn perform_update_install(app: &AppHandle, info: UpdateInfo) -> Result<(), S
         emit_progress(
             app,
             "up_to_date",
-            format!("已在浏览器打开 v{} 安装包下载页", info.latest_version),
+            crate::i18n::uif("updater.opened_download", &[("ver", info.latest_version.clone())]),
             Some(info),
         );
         Ok(())
@@ -1144,7 +1144,7 @@ pub fn start_background_update_checker(app: AppHandle) {
                     emit_progress(
                         &app,
                         "available",
-                        format!("发现新版本 v{}", info.latest_version),
+                        crate::i18n::uif("updater.available", &[("ver", info.latest_version.clone())]),
                         Some(info),
                     );
                 }

@@ -9,6 +9,7 @@ import {
 } from './keyboardLayout';
 import type { KeyboardOrientation } from './catEngine';
 import { thaiLegendMode, type ThaiLegendMode } from './inputLang';
+import { getActiveLocale, t } from './i18n';
 
 export class Spring1D {
   public x: number;
@@ -542,8 +543,44 @@ function makeSoftShadowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+const PLATE_FONT = (px: number) => `bold ${px}px "Segoe UI", "PingFang SC", sans-serif`;
+
+/**
+ * Draws the privacy plate text centred at (cx, cy) inside maxW x maxH. One line at 34px when it
+ * fits (the original zh-CN plate); otherwise split at " · " onto two lines and shrink (down to
+ * 20px) until every line fits, so translations and the lock emoji are never clipped.
+ */
+function drawPlateText(
+  g: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  maxW: number,
+  maxH: number,
+): void {
+  g.font = PLATE_FONT(34);
+  if (g.measureText(text).width <= maxW) {
+    g.fillText(text, cx, cy);
+    return;
+  }
+  const sep = text.indexOf(' · ');
+  const lines = sep > 0 ? [text.slice(0, sep), text.slice(sep + 3)] : [text];
+  let size = 34;
+  for (; size > 20; size -= 1) {
+    g.font = PLATE_FONT(size);
+    const widest = Math.max(...lines.map((l) => g.measureText(l).width));
+    if (widest <= maxW && size * 1.25 * lines.length <= maxH) break;
+  }
+  g.font = PLATE_FONT(size);
+  const lineH = size * 1.25;
+  const top = cy - (lineH * (lines.length - 1)) / 2;
+  lines.forEach((line, i) => g.fillText(line, cx, top + i * lineH, maxW));
+}
+
 function makePrivacyTexture(): THREE.CanvasTexture {
-  const hit = miscTextureCache.get('privacy:shield');
+  // Cached per UI language: the plate text is localized.
+  const cacheKey = `privacy:shield:${getActiveLocale()}`;
+  const hit = miscTextureCache.get(cacheKey);
   if (hit) return hit;
   const pCanvas = document.createElement('canvas');
   pCanvas.width = 512;
@@ -554,14 +591,13 @@ function makePrivacyTexture(): THREE.CanvasTexture {
   pg.strokeStyle = 'rgba(244, 114, 182, 0.65)';
   pg.lineWidth = 6;
   pg.strokeRect(6, 6, 500, 148);
-  pg.font = 'bold 34px "Segoe UI", "PingFang SC", sans-serif';
   pg.fillStyle = '#fbcfe8';
   pg.textAlign = 'center';
   pg.textBaseline = 'middle';
-  pg.fillText('🔒 密码防偷窥 · 已隐藏按键', 256, 80);
+  drawPlateText(pg, t('privacy.plate_3d'), 256, 80, 460, 128);
   const pTex = new THREE.CanvasTexture(pCanvas);
   pTex.colorSpace = THREE.SRGBColorSpace;
-  miscTextureCache.set('privacy:shield', pTex);
+  miscTextureCache.set(cacheKey, pTex);
   return pTex;
 }
 

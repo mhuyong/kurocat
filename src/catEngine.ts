@@ -1227,8 +1227,12 @@ export class KuroCatEngine {
       if (!repeat && !opts?.synthetic) this.onPrivacyTyping();
       return;
     }
-    // AI auto-typing moves the paws and keycaps but shows no character bubble.
-    const showBubble = this.showKeyBubbles && !opts?.synthetic;
+    // AI keys (synthetic) move the paws and keycaps; they show a bubble only with an explicit
+    // label (the character the AI typed) and never feed the ` ~ hold logic (bubble vk 0).
+    const synthetic = opts?.synthetic === true;
+    const forcedLabel = synthetic ? opts?.bubble : undefined;
+    const showBubble = this.showKeyBubbles && (!synthetic || Boolean(forcedLabel));
+    const bubbleVk = synthetic ? 0 : vk;
     const now = performance.now();
     const spec = resolveKeyByVk(vk, this.keyboardLayout);
     if (!spec) return;
@@ -1287,9 +1291,9 @@ export class KuroCatEngine {
       const pt = dafeiyuUseTail ? this.getTailTargetPoint(spec) : rawKeyPt;
       this.dafeiyu.onKeyDown(vk, pt, dafeiyuLayout, repeat, dafeiyuUseTail);
       if (showBubble) {
-        const label = keyBubbleLabel(vk, spec);
+        const label = forcedLabel ?? keyBubbleLabel(vk, spec);
         if (label) {
-          this.spawnBubble(label, spec.id === 'space', pt.x, now, vk);
+          this.spawnBubble(label, spec.id === 'space', pt.x, now, bubbleVk);
         }
       }
       return;
@@ -1343,9 +1347,9 @@ export class KuroCatEngine {
       }
 
       if (showBubble) {
-        const label = keyBubbleLabel(vk, spec);
+        const label = forcedLabel ?? keyBubbleLabel(vk, spec);
         if (label) {
-          this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, vk);
+          this.spawnBubble(label, spec.id === 'space', clampedTailPt.x, now, bubbleVk);
         }
       }
       return;
@@ -1441,9 +1445,9 @@ export class KuroCatEngine {
     }
 
     if (showBubble) {
-      const label = keyBubbleLabel(vk, spec);
+      const label = forcedLabel ?? keyBubbleLabel(vk, spec);
       if (label) {
-        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, vk);
+        this.spawnBubble(label, spec.id === 'space', targetPoint.x, now, bubbleVk);
       }
     }
   }

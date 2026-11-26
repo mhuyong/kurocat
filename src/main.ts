@@ -212,6 +212,7 @@ const agentCompanion = new AgentCompanionController({
   getTarget: () => (active3d && engine3d ? engine3d : engine),
   is3DTarget: () => Boolean(active3d && engine3d),
   allowSound: () => settings.soundEnabled !== false,
+  allowTypedText: () => settings.showAiTyping === true,
 });
 
 window.addEventListener('resize', () => engine3d?.resize());
@@ -768,6 +769,7 @@ async function applySettingsPatch(patch: Partial<AppSettings>): Promise<void> {
   }
   const seq = ++settingsPatchSeq;
   settings = { ...settings, ...patch };
+  agentCompanion.refreshTypedTextPermission();
   syncMenuUI();
   const updated = await invoke<AppSettings>('update_settings', { patch: settings });
   if (seq !== settingsPatchSeq) return;
@@ -1141,6 +1143,8 @@ async function bootstrap(): Promise<void> {
     const prevLock = lastKnownLockState;
     const prevRenderMode = settings.renderMode;
     settings = ev.payload;
+    // Tray, settings window or file change: "Show what the AI types" off stops at once.
+    agentCompanion.refreshTypedTextPermission();
     if (prevRenderMode === '2d' && settings.renderMode !== '2d') {
       webgl3dUnavailable = false;
     }

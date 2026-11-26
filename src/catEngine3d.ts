@@ -2159,12 +2159,15 @@ export class KuroCatEngine3D {
           this.tailKeyMode !== 'off' &&
           (this.desk.isRightEdgeTailKey(k.spec.id) ||
             (this.tailKeyMode === 'smart' && (k.spec.id === 'space' || k.spec.id === 'enter')));
-    // AI auto-typing moves the paws and keycaps but shows no character bubble.
-    const bubbleLabel = opts?.synthetic
-      ? null
+    // AI keys (synthetic) move the paws and keycaps; they show a popup only with an explicit
+    // label (the character the AI typed) and never feed the ` ~ hold logic (popup vk 0).
+    const synthetic = opts?.synthetic === true;
+    const bubbleLabel = synthetic
+      ? opts?.bubble || null
       : keyBubbleLabel(vk, k.spec) || k.spec.label || k.spec.id;
+    const bubbleVk = synthetic ? 0 : vk;
     if (useTail) {
-      this.triggerTailKey(k.spec.id, bubbleLabel, vk);
+      this.triggerTailKey(k.spec.id, bubbleLabel, bubbleVk);
       return;
     }
 
@@ -2191,7 +2194,7 @@ export class KuroCatEngine3D {
     this.sSquash.kick(0.32);
     this.sPitch.kick(0.75);
     if (this.showKeyBubbles && bubbleLabel !== null) {
-      this.spawnKeyPopup(k.spec.id, bubbleLabel, paw.side, vk);
+      this.spawnKeyPopup(k.spec.id, bubbleLabel, paw.side, bubbleVk);
     }
   }
 

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:frontend": "node scripts/test-frontend.mjs",
     "build:web": "vite build --config vite.web.config.ts",
     "build:android-web": "vite build --config vite.android.config.ts",
     "preview": "vite preview",

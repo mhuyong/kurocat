@@ -1,5 +1,6 @@
 import { catAudio } from './audio';
 import { t } from './i18n';
+import { keyForChar, type TypedKey } from './keyboardLayout';
 
 export type AgentStatusKind = 'working' | 'thinking' | 'waiting' | 'done' | 'error' | 'idle';
 export type AgentActionKind =
@@ -18,6 +19,8 @@ export interface AgentCompanionEvent {
   source?: string;
   text?: string;
   tool?: string;
+  /** Real text to type key by key ("Show what the AI types"); filtered and trimmed in Rust. */
+  typedText?: string;
   autoType?: boolean;
   sound?: boolean;
   ttlMs?: number;
@@ -28,9 +31,12 @@ export interface AgentCompanionEvent {
 export interface KeyEventOptions {
   /**
    * The key was not pressed by the user (AI companion auto-typing): the paws and keycaps
-   * move as usual, but no character bubble / key popup is shown.
+   * move as usual, but no character bubble / key popup is shown unless `bubble` is given.
+   * Synthetic keys never touch the Shift state, the ` ~ hold logic or the language bubble.
    */
   synthetic?: boolean;
+  /** Exact bubble text for a synthetic key (the character the AI typed). */
+  bubble?: string;
 }
 
 const SYNTHETIC: KeyEventOptions = { synthetic: true };
@@ -58,13 +64,20 @@ export interface AgentCompanionOptions {
   getTarget: () => AgentCompanionTarget | null;
   is3DTarget: () => boolean;
   allowSound: () => boolean;
+  /** False on surfaces that must never show the AI's real text (the OBS overlay). */
+  allowTypedText?: () => boolean;
 }
+
+/** Pace of real-text typing: one character every 70-120 ms. */
+const TYPED_MIN_MS = 70;
+const TYPED_JITTER_MS = 50;
 
 export class AgentCompanionController {
   private readonly bubbleEl: HTMLDivElement | null;
   private readonly getTarget: () => AgentCompanionTarget | null;
   private readonly is3DTarget: () => boolean;
   private readonly allowSound: () => boolean;
+  private readonly allowTypedText: () => boolean;
 
   private activeStatus: AgentStatusKind = 'idle';
   private privacyPaused = false;
@@ -76,20 +89,44 @@ export class AgentCompanionController {
   private ttlTimer: number | null = null;
   private burstRemaining = 0;
   private lastSoundAt = 0;
+  private typedQueue: TypedKey[] = [];
+  /** The text the queue holds, so a duplicate event (PreToolUse + PostToolUse) does not restart it. */
+  private queuedText = '';
 
   constructor(opts: AgentCompanionOptions) {
     this.bubbleEl = opts.bubbleEl;
     this.getTarget = opts.getTarget;
     this.is3DTarget = opts.is3DTarget;
     this.allowSound = opts.allowSound;
+    this.allowTypedText = opts.allowTypedText ?? (() => true);
   }
 
   public setPrivacyMode(active: boolean): void {
     this.privacyPaused = Boolean(active);
     if (this.privacyPaused) {
+      // Drop the AI's queued real text at once; it does not resume after the guard ends.
+      this.dropTypedText();
       this.releaseAllVirtualKeys();
       this.hideBubble();
     }
+  }
+
+  /**
+   * Call when "Show what the AI types" may have changed. When it is now off, the queued real
+   * text is dropped at once and the quiet pretend-typing (no bubbles) carries on.
+   */
+  public refreshTypedTextPermission(): void {
+    if (!this.allowTypedText()) this.dropTypedText();
+  }
+
+  /** True while real AI text is queued (for tests and diagnostics). */
+  public hasQueuedTypedText(): boolean {
+    return this.typedQueue.length > 0;
+  }
+
+  private dropTypedText(): void {
+    this.typedQueue = [];
+    this.queuedText = '';
   }
 
   /** Pause synthetic coding keystrokes briefly so the user's real keyboard/mouse always wins. */
@@ -137,7 +174,8 @@ export class AgentCompanionController {
 
     switch (status) {
       case 'working': {
-        if (ev.autoType !== false) {
+        const typing = this.queueTypedText(ev.typedText);
+        if (ev.autoType !== false || typing) {
           this.startAutoTyping();
         } else {
           this.stopAutoTyping();
@@ -253,6 +291,31 @@ export class AgentCompanionController {
     catAudio.playAgentNotice(kind);
   }
 
+  /**
+   * Queues the AI's real text, replacing whatever is still queued. Characters with no key on
+   * the keyboard (CJK, emoji, ...) are skipped. Returns true when something was queued.
+   */
+  private queueTypedText(text: string | undefined): boolean {
+    if (!text || this.privacyPaused || !this.allowTypedText()) {
+      // A new event replaces whatever is still queued, also when it has no text to type.
+      this.typedQueue = [];
+      return false;
+    }
+    if (text === this.queuedText && this.typedQueue.length > 0) return true;
+    const keys: TypedKey[] = [];
+    for (const ch of text) {
+      const key = keyForChar(ch);
+      if (key) keys.push(key);
+    }
+    this.queuedText = text;
+    this.typedQueue = keys;
+    if (keys.length > 0 && this.autoTyping) {
+      // Start the new text right away instead of finishing a quiet burst.
+      this.scheduleNextVirtualKey(40);
+    }
+    return keys.length > 0;
+  }
+
   private startAutoTyping(): void {
     if (this.autoTyping) return;
     this.autoTyping = true;
@@ -262,6 +325,7 @@ export class AgentCompanionController {
 
   private stopAutoTyping(): void {
     this.autoTyping = false;
+    this.typedQueue = [];
     if (this.typeTimer !== null) {
       window.clearTimeout(this.typeTimer);
       this.typeTimer = null;
@@ -297,6 +361,32 @@ export class AgentCompanionController {
       }
 
       const target = this.getTarget();
+      // Checked on every key, so a key already scheduled never types real text after the
+      // setting went off.
+      if (this.typedQueue.length > 0 && !this.allowTypedText()) this.dropTypedText();
+      const typed = this.typedQueue.shift();
+      if (typed) {
+        if (target) {
+          if (this.heldVirtualVks.delete(typed.vk)) target.onKeyUp(typed.vk);
+          target.onKeyDown(typed.vk, false, { synthetic: true, bubble: typed.bubble });
+          this.heldVirtualVks.add(typed.vk);
+          const rid = window.setTimeout(() => {
+            this.releaseTimers.delete(rid);
+            if (this.heldVirtualVks.delete(typed.vk)) {
+              this.getTarget()?.onKeyUp(typed.vk);
+            }
+          }, 45 + Math.floor(Math.random() * 15));
+          this.releaseTimers.add(rid);
+        }
+        // When the text is done and the AI still works, the quiet pretend-typing takes over.
+        this.burstRemaining = 5 + Math.floor(Math.random() * 7);
+        this.scheduleNextVirtualKey(
+          this.typedQueue.length > 0
+            ? TYPED_MIN_MS + Math.floor(Math.random() * TYPED_JITTER_MS)
+            : 320 + Math.floor(Math.random() * 280),
+        );
+        return;
+      }
       if (target) {
         const vk = CODING_VKS[Math.floor(Math.random() * CODING_VKS.length)];
         target.onKeyDown(vk, false, SYNTHETIC);

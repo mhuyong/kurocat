@@ -308,7 +308,9 @@ pub fn load_settings() -> AppSettings {
 }
 
 /// A settings file that cannot be parsed is about to be replaced by defaults on the next save:
-/// keep a copy first (`settings.json.bak-unparseable`), once per distinct content.
+/// keep a copy first (`settings.json.bak-unparseable`). There is a single backup file: it is
+/// rewritten only when the broken content differs from what it already holds, so it always
+/// keeps the latest broken content (an earlier different one is overwritten).
 fn backup_unparseable(path: &std::path::Path, content: &str) {
     let backup = path.with_extension("json.bak-unparseable");
     if fs::read_to_string(&backup).map(|old| old == content).unwrap_or(false) {

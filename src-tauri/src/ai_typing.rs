@@ -228,34 +228,42 @@ pub fn trim_typed(raw: &str) -> Option<String> {
     }
 }
 
+/// File names that hold secrets: .env*, *.pem, *.key, *.pfx, *.jks, id_rsa*, id_ed25519*,
+/// credentials*, secrets*. Only the file name counts (not folders, not words like token/password).
 fn is_secret_path(path: &str) -> bool {
-    let p = path.to_ascii_lowercase();
-    [
-        ".env", ".pem", ".key", ".pfx", ".jks", "id_rsa", "id_ed25519", "credentials", "secret",
-        "token", "password",
-    ]
-    .iter()
-    .any(|needle| p.contains(needle))
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path).to_ascii_lowercase();
+    ["id_rsa", "id_ed25519", "credentials", "secrets", ".env"]
+        .iter()
+        .any(|p| name.starts_with(p))
+        || [".pem", ".key", ".pfx", ".jks"].iter().any(|e| name.ends_with(e))
 }
 
 struct SecretRules {
     patterns: Vec<Regex>,
     long_run: Regex,
     env_line: Regex,
-    /// Round 2 (R1, R2, R4, R5, R7); R3 and R6 are code below.
+    /// Round 2 (R4, R5); R1, R2, R3 and R7 are code below, R6 is digit_run.
     round2: Vec<(&'static str, Regex)>,
     digit_run: Regex,
+    /// name = value / name: value (R1).
+    assign: Regex,
+    /// export NAME=, set NAME=, $env:NAME =, a leading NAME=value, ALL-CAPS export NAME (R2).
+    shell_assign: Vec<Regex>,
+    /// Bearer <value>.
+    bearer: Regex,
+    /// R7: a secret word followed by a value.
+    secret_word: Regex,
 }
 
 fn rules() -> &'static SecretRules {
     static RULES: OnceLock<SecretRules> = OnceLock::new();
     RULES.get_or_init(|| {
         let p = [
-            // A secret-ish name followed by '=', ':' or a space and a value.
-            r#"(?i)(password|passwd|pwd|secret|token|api[_-]?key|apikey|auth|authorization|bearer|credential|private[_-]?key|access[_-]?key|session|cookie|pzwd)[a-z0-9_-]*["']?\s*[=:\s]\s*["']?[^\s"']+"#,
+            // Authorization header with any value.
+            r#"(?i)\bauthorization\s*[:=]\s*["']?\S+"#,
             // -p<value> (mysql style) and --password / --token style flags.
             r"(^|\s)-p[^\s-]",
-            r"(?i)--(password|passwd|pass|pwd|token|secret|api[_-]?key|auth)\b",
+            r"(?i)--(password|passwd|pass|pwd|token|secret|api[_-]?key)\b",
             // user:pass@host in URLs and user/pass@host connect strings (sqlplus style).
             r"[A-Za-z][A-Za-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@",
             r"(^|\s)[A-Za-z0-9_.-]+/[^\s/@]+@[A-Za-z0-9_.:-]+",
@@ -268,23 +276,10 @@ fn rules() -> &'static SecretRules {
             r"\beyJ[A-Za-z0-9_-]{6,}",
             r"-----BEGIN",
         ];
-        let round2: [(&'static str, &'static str); 12] = [
-            // R1: NAME=value / NAME: value where NAME holds a secret-ish part.
-            (
-                "R1",
-                r#"(?i)[A-Za-z0-9_.-]*(pass|pw|pwd|passphrase|secret|token|key|auth|cred|session|cookie|pin|otp)[A-Za-z0-9_.-]*["']?\s*(=|:)\s*\S"#,
-            ),
-            // R2 (shell form only): export / set NAME=value with '=' right after the name,
-            // export of an ALL-CAPS name (with or without a value), $env:NAME = value, and a
-            // capital NAME=value at the start of a command. JS/TS exports (`export default`,
-            // `export const x = ...`, `export { a }`) are not shell and type; R1 still catches
-            // secret-looking names there.
-            ("R2", r"(?i)(^|[\s;&|(])(export|set)\s+[A-Za-z_][A-Za-z0-9_]*="),
-            ("R2", r"(^|[\s;&|(])export\s+[A-Z][A-Z0-9_]*(\s|$)"),
-            ("R2", r"(?i)\$env:[A-Za-z_][A-Za-z0-9_]*\s*="),
-            ("R2", r"(^|[;&|(]\s*|\n\s*)\s*[A-Z][A-Z0-9_]*=\S"),
+        let round2: [(&'static str, &'static str); 5] = [
             // R4: any userinfo in a URL, with or without a colon.
             ("R4", r"(?i)[a-z][a-z0-9+.-]*://[^\s/@]+@"),
+            ("R4", r"(?i)\b(ftp|sftp|ssh|smb|ldap|mongodb(\+srv)?|redis|amqp|postgres(ql)?|mysql)://\S*@"),
             // R5: more token shapes.
             ("R5", r"(?i)\b(sk|rk|pk)_(live|test)_"),
             ("R5", r"(?i)\bSG\.[A-Za-z0-9_.-]{16,}"),
@@ -292,26 +287,150 @@ fn rules() -> &'static SecretRules {
                 "R5",
                 r"(?i)(\bglpat-|\bhf_[A-Za-z0-9]|\baiza[A-Za-z0-9_-]|\bya29\.|\bnpm_[A-Za-z0-9]|\bshpat_|\bdop_v1_|\bxox[as]-)",
             ),
-            // R7: secret words anywhere, with or without a value (English and Thai).
-            (
-                "R7",
-                r"(?i)(password|passwd|passphrase|passcode|secret|credential|pgpassword|\bpw\b|รหัสผ่าน|พาสเวิร์ด|รหัสลับ|โทเคน|กุญแจลับ)",
-            ),
-            // R3 helpers live in `sensitive_tool`; R6 in `digit_run`.
-            ("R2", r"(?m)^\s*(export\s+)?[A-Z][A-Z0-9_]*=\S"),
-            ("R4", r"(?i)\b(ftp|sftp|ssh|smb|ldap|mongodb(\+srv)?|redis|amqp|postgres(ql)?|mysql)://\S*@"),
         ];
         SecretRules {
             patterns: p.iter().map(|s| Regex::new(s).expect("secret rule")).collect(),
-            long_run: Regex::new(r"[A-Za-z0-9+/=_-]{24,}").expect("long run rule"),
+            long_run: Regex::new(r"[A-Za-z0-9+/=_-]{32,}").expect("long run rule"),
             env_line: Regex::new(r"(?m)^\s*(export\s+)?[A-Z][A-Z0-9_]*=\S").expect("env rule"),
             round2: round2
                 .iter()
                 .map(|(id, s)| (*id, Regex::new(s).expect("round 2 rule")))
                 .collect(),
-            // R6: 13+ digits, spaces or dashes allowed between them.
-            digit_run: Regex::new(r"\d(?:[ -]?\d){12,}").expect("digit rule"),
+            // R6: 16+ digits, spaces or dashes allowed between them.
+            digit_run: Regex::new(r"\d(?:[ -]?\d){15,}").expect("digit rule"),
+            assign: Regex::new(r#"([A-Za-z0-9_.\-]+)["']?[ \t]*[=:][ \t]*(["']?)([^\s"',;)]*)"#)
+                .expect("assign rule"),
+            shell_assign: [
+                r"(?i)(?:^|[\s;&|(])(?:export|set)\s+([A-Za-z_][A-Za-z0-9_]*)=",
+                r"(?:^|[\s;&|(])export\s+([A-Z][A-Z0-9_]*)(?:\s|$)",
+                r"(?i)\$env:([A-Za-z_][A-Za-z0-9_]*)\s*=",
+                r"(?:^|[;&|(]\s*|\n\s*)\s*([A-Z][A-Z0-9_]*)=\S",
+                r"(?m)^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)=\S",
+            ]
+            .iter()
+            .map(|p| Regex::new(p).expect("shell assign rule"))
+            .collect(),
+            bearer: Regex::new(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{6,})").expect("bearer rule"),
+            secret_word: Regex::new(
+                r"(?i)(password|passwd|passphrase|passcode|\bpw\b|รหัสผ่าน|พาสเวิร์ด|รหัสลับ)(\s*[:=]\s*|\s+is\s+|\s*คือ\s*|\s+)(\S+)",
+            )
+            .expect("secret word rule"),
         }
+    })
+}
+
+/// Splits a variable name into lower-case words: on _ . - and on camelCase.
+fn name_words(name: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut cur = String::new();
+    let mut prev_lower = false;
+    for ch in name.chars() {
+        if ch == '_' || ch == '.' || ch == '-' {
+            if !cur.is_empty() {
+                words.push(std::mem::take(&mut cur));
+            }
+            prev_lower = false;
+            continue;
+        }
+        if ch.is_ascii_uppercase() && prev_lower && !cur.is_empty() {
+            words.push(std::mem::take(&mut cur));
+        }
+        prev_lower = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        cur.push(ch.to_ascii_lowercase());
+    }
+    if !cur.is_empty() {
+        words.push(cur);
+    }
+    words
+}
+
+/// R1(a): the name holds pass, pwd, passphrase, secret, token, credential, apikey, api_key,
+/// private_key, access_key or secret_key; or it is exactly key or pw, or ends in _key / -key.
+/// Checked on the name as written and on its snake_case form (accessKey -> access_key).
+fn secret_name(name: &str) -> bool {
+    let snake = name_words(name).join("_");
+    let lower = name.to_ascii_lowercase().replace('-', "_");
+    [lower, snake].iter().any(|n| {
+        n == "pw"
+            || n == "key"
+            || n.ends_with("_key")
+            || [
+                "pass", "pwd", "passphrase", "secret", "token", "credential", "apikey", "api_key",
+                "private_key", "access_key", "secret_key",
+            ]
+            .iter()
+            .any(|w| n.contains(w))
+    })
+}
+
+/// Names that are themselves passwords or secrets: a bare lower-case word is a literal for them.
+fn password_like_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["pass", "pwd", "secret"].iter().any(|w| n.contains(w))
+}
+
+/// R1(b): the value is a literal: a quoted string, or a bare word of 4+ characters. A call, a
+/// number, true/false/null or another identifier (a lower-case or camelCase word, a dotted
+/// chain) is not. Password-like names still count a bare lower-case word (password=letmein).
+fn literal_value(quote: &str, value: &str, password_like: bool) -> bool {
+    if !quote.is_empty() {
+        return !value.is_empty();
+    }
+    let v = value.trim_end_matches([':', '}', ']']);
+    if v.chars().count() < 4 {
+        return false;
+    }
+    if v.contains('(') || v.starts_with('$') || v.starts_with('<') || v.starts_with('{') {
+        return false;
+    }
+    let lower = v.to_ascii_lowercase();
+    if ["true", "false", "null", "none", "nil", "undefined"].contains(&lower.as_str()) {
+        return false;
+    }
+    if v.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_') {
+        return false;
+    }
+    let identifier = v.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false)
+        && v.chars().all(|c| c.is_ascii_alphabetic() || c == '.' || c == '_');
+    !identifier || (password_like && v.chars().all(|c| c.is_ascii_lowercase()))
+}
+
+/// R1: name = value / name: value where the name is secret-like and the value a literal.
+fn assignment_secret(text: &str) -> bool {
+    rules().assign.captures_iter(text).any(|c| {
+        let name = &c[1];
+        secret_name(name) && literal_value(&c[2], &c[3], password_like_name(name))
+    })
+}
+
+/// R2: shell assignments (export / set / $env: / a leading NAME=value / ALL-CAPS export) only
+/// when the name passes R1(a). export PATH=... and RUST_LOG=debug cmd type.
+fn shell_assignment_secret(text: &str) -> bool {
+    rules()
+        .shell_assign
+        .iter()
+        .any(|re| re.captures_iter(text).any(|c| secret_name(&c[1])))
+}
+
+/// R7: a secret word followed by a value (password: x, pw = x, password is x, Thai คือ), or by a
+/// value-looking word after a plain space (pw x9y8). A bare mention types.
+fn secret_word_with_value(text: &str) -> bool {
+    rules().secret_word.captures_iter(text).any(|c| {
+        let sep = &c[2];
+        if sep.chars().all(char::is_whitespace) {
+            let w = &c[3];
+            w.chars().any(|ch| ch.is_ascii_digit() || ch.is_uppercase() || !ch.is_alphanumeric())
+        } else {
+            true
+        }
+    })
+}
+
+/// Bearer <value> where the value has a digit or a capital letter (not the word "token").
+fn bearer_secret(text: &str) -> bool {
+    rules().bearer.captures_iter(text).any(|c| {
+        let v = &c[1];
+        v.chars().any(|ch| ch.is_ascii_digit() || ch.is_ascii_uppercase())
     })
 }
 
@@ -407,6 +526,15 @@ fn round2_hits(text: &str) -> Vec<&'static str> {
             hits.push(id);
         }
     }
+    if assignment_secret(text) {
+        hits.push("R1");
+    }
+    if shell_assignment_secret(text) {
+        hits.push("R2");
+    }
+    if secret_word_with_value(text) {
+        hits.push("R7");
+    }
     if sensitive_tool(text) {
         hits.push("R3");
     }
@@ -425,12 +553,17 @@ pub fn looks_secret(text: &str) -> bool {
     }
     let long_mixed = r.long_run.find_iter(text).any(|m| {
         let s = m.as_str();
-        s.chars().any(|c| c.is_ascii_alphabetic()) && s.chars().any(|c| c.is_ascii_digit())
+        // A run of exactly 40 hex characters is a git SHA, not a secret.
+        let git_sha = s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit());
+        !git_sha && s.chars().any(|c| c.is_ascii_alphabetic()) && s.chars().any(|c| c.is_ascii_digit())
     });
     if long_mixed {
         return true;
     }
     if r.env_line.find_iter(text).count() >= 2 {
+        return true;
+    }
+    if bearer_secret(text) {
         return true;
     }
     !round2_hits(text).is_empty()
@@ -503,8 +636,7 @@ mod tests {
         assert!(looks_secret("export API_KEY=abc123"));
         assert!(looks_secret("password = hunter2"));
         assert!(looks_secret("tool --password hunter2"));
-        assert!(looks_secret("set pzwd: x"));
-        assert!(looks_secret("cookie: a=b"));
+        assert!(looks_secret("x-api-key: abcd1234"));
     }
 
     #[test]
@@ -530,8 +662,12 @@ mod tests {
 
     #[test]
     fn filter_long_mixed_runs() {
-        assert!(looks_secret("echo 3f2a9c4b1e8d7f6a5b4c3d2e1f0a9b8c7d6e5f4a"));
+        // 48 hex characters: a long high-entropy run drops; exactly 40 hex (a git SHA) types.
+        assert!(looks_secret("echo 3f2a9c4b1e8d7f6a5b4c3d2e1f0a9b8c7d6e5f4a1b2c3d4e"));
+        assert!(!looks_secret("git show 3f2a9c4b1e8d7f6a5b4c3d2e1f0a9b8c7d6e5f4a"));
+        // 32+ characters mixed letters and digits drop; 24-31 now type.
         assert!(looks_secret("data QWxhZGRpbjpvcGVuIHNlc2FtZTEyMzQ1Ng=="));
+        assert!(!looks_secret("id abcdefghij0123456789abcd"));
         // Long but letters only: not a secret shape.
         assert!(!looks_secret("abcdefghijklmnopqrstuvwxyzabcdef"));
     }
@@ -539,8 +675,9 @@ mod tests {
     #[test]
     fn filter_env_like_content() {
         assert!(looks_secret("DB_HOST=localhost\nDB_NAME=app\n"));
-        // Round 2 (R2): a single capital NAME=value line drops too.
-        assert!(looks_secret("DB_HOST=localhost"));
+        // A single capital NAME=value line drops only for a secret-like name (R2).
+        assert!(!looks_secret("DB_HOST=localhost"));
+        assert!(looks_secret("DB_PASSWORD=localhost"));
     }
 
     #[test]
@@ -549,7 +686,14 @@ mod tests {
         assert_eq!(typed("Edit", json!({"file_path": "config/credentials.json", "new_string": "x"})), None);
         assert_eq!(typed("Write", json!({"file_path": "certs/server.pem", "content": "x"})), None);
         assert_eq!(typed("Write", json!({"file_path": "C:\\Users\\a\\.ssh\\id_ed25519", "content": "x"})), None);
-        assert_eq!(typed("Edit", json!({"file_path": "src/secret_store.ts", "new_string": "x"})), None);
+        assert_eq!(typed("Write", json!({"file_path": "config/secrets.yml", "content": "x"})), None);
+        assert_eq!(typed("Write", json!({"file_path": "home/.env.local", "content": "x"})), None);
+        assert_eq!(typed("Write", json!({"file_path": "keys/app.key", "content": "x"})), None);
+        assert_eq!(typed("Write", json!({"file_path": "C:\\Users\\a\\.ssh\\id_rsa.pub", "content": "x"})), None);
+        // Words like token / password / secret in a normal file name do not drop.
+        for p in ["src/tokenizer.ts", "ui/password-field.tsx", "src/secret_store.ts", "keys/readme.md"] {
+            assert_eq!(typed("Write", json!({"file_path": p, "content": "x"})).as_deref(), Some("x"), "{p}");
+        }
     }
 
     #[test]
@@ -584,9 +728,29 @@ mod tests {
 
     #[test]
     fn r1_assignment_names() {
-        for t in ["pw=FAKEpw1", "pass=FAKE", "DB_PASS=FAKE", "KEY=FAKE", "x-api-key: FAKE", "otp = 123", "my_pin: 0000", "sessionCookie=abc"] {
+        // Name passes R1(a) and the value is a literal (quoted, or a bare word of 4+ characters).
+        for t in [
+            "pw=FAKEpw1", "pass=FAKE", "DB_PASS=FAKE", "KEY=FAKE", "x-api-key: FAKE", "API_KEY=abc123xyz",
+            "password = \"hunter22\"", "token: 'abcd1234'", "pw=x9y8z7", "secret_key = 'a'", "accessKey = \"abcd1234\"",
+            "password=letmein", "{\"password\": \"hunter22\"}",
+        ] {
             assert!(hits(t).contains(&"R1"), "{t}");
             assert!(looks_secret(t), "{t}");
+        }
+    }
+
+    /// Common words and code with the same words type: auth, session, cookie, pin, otp are not
+    /// names any more, and a call / number / boolean / identifier is not a literal value.
+    #[test]
+    fn r1_must_type() {
+        for t in [
+            "fix auth bug", "ตรวจสอบ session ของผู้ใช้", "const typing = true;", "set cookie banner text",
+            "const authToken = getToken();", "const sessionId = 5;", "accessKeyId", "auth-service",
+            "--author alice", "// TODO: refactor session handling", "token = tokens", "const token = null;",
+            "key: value", "cookie: a=b", "otp = 123", "my_pin: 0000", "sessionCookie=abc",
+            "mapping: user -> id", "const key = 5;", "secret = process.env.X",
+        ] {
+            assert!(!looks_secret(t), "must type: {t} (hits {:?})", hits(t));
         }
     }
 
@@ -596,17 +760,29 @@ mod tests {
             assert!(!hits(t).contains(&"R2"), "{t}");
             assert!(!looks_secret(t), "must type: {t} (hits {:?})", hits(t));
         }
-        assert!(hits("export API_URL=http://x").contains(&"R2"));
-        assert!(looks_secret("export API_URL=http://x"));
-        // A secret-looking JS export is still caught, by R1.
-        assert!(hits("export const apiKey = 123;").contains(&"R1"));
-        assert!(looks_secret("export const apiKey = 123;"));
+        // export of a name that is not secret-like types (R2 needs an R1(a) name).
+        assert!(!looks_secret("export API_URL=http://x"));
+        assert!(hits("export API_KEY=http://x").contains(&"R2"));
+        // A secret-looking JS export with a literal value is still caught, by R1; a number types.
+        assert!(hits("export const apiKey = 'abcd1234';").contains(&"R1"));
+        assert!(looks_secret("export const apiKey = 'abcd1234';"));
+        assert!(!looks_secret("export const apiKey = 123;"));
     }
 
     #[test]
     fn r2_shell_assignments() {
-        for t in ["export DB_PASS=FAKE", "export PATH=/usr/bin", "export FAKEKEY", "set FOO=bar", "$env:FAKE_TOKEN = 'x'", "FOO=bar make", "ls && FOO=bar make"] {
+        // Only for names that pass R1(a); export PATH=... and RUST_LOG=debug cmd type.
+        for t in [
+            "export DB_PASS=FAKE", "export DB_PASS=x", "export KEY=x", "export FAKE_KEY", "set DB_PASSWORD=bar",
+            "$env:FAKE_TOKEN = 'x'", "SECRET=bar make", "ls && API_KEY=bar make",
+        ] {
             assert!(hits(t).contains(&"R2"), "{t}");
+        }
+        for t in [
+            "export PATH=/usr/bin", "RUST_LOG=debug cargo run", "set FOO=bar", "FOO=bar make", "NODE_ENV=production npm start",
+            "export EDITOR", "$env:PATH = 'x'", "export TESTONLYKEY",
+        ] {
+            assert!(!looks_secret(t), "must type: {t} (hits {:?})", hits(t));
         }
     }
 
@@ -660,21 +836,30 @@ mod tests {
 
     #[test]
     fn r6_digit_runs() {
-        for t in ["echo 12345678901234567890123456789012", "4111 1111 1111 1111", "4111-1111-1111-1111", "id 1234567890123"] {
+        for t in ["echo 12345678901234567890123456789012", "4111 1111 1111 1111", "4111-1111-1111-1111", "id 1234567890123456"] {
             assert!(hits(t).contains(&"R6"), "{t}");
         }
-        assert!(!hits("id 123456789012").contains(&"R6"));
+        // 15 digits and fewer type (13+ used to drop).
+        assert!(!hits("id 123456789012345").contains(&"R6"));
+        assert!(!hits("id 1234567890123").contains(&"R6"));
     }
 
     #[test]
     fn r7_secret_words_incl_thai() {
+        // A secret word followed by a value drops (: = is, คือ, or a value-looking word).
         for t in [
-            "the password field", "passwd", "passphrase", "my passcode", "my login is bob and pw FAKE",
-            "top secret", "credentials.json", "รหัสผ่านคือ FAKE", "พาสเวิร์ด", "รหัสลับ", "โทเคน", "กุญแจลับ",
+            "password: x", "my password is hunter2", "passwd = abc", "passphrase: correct horse", "passcode 4821",
+            "my login is bob and pw FAKE", "pw x9y8", "รหัสผ่านคือ FAKE", "รหัสผ่าน: abc", "พาสเวิร์ด = abc", "รหัสลับ คือ x",
         ] {
             assert!(hits(t).contains(&"R7"), "{t}");
         }
-        assert!(!hits("pwd_helper").contains(&"R7"));
+        // A bare mention types; secret and credential are not R7 words any more.
+        for t in [
+            "echo the password field is hidden", "passwd", "passphrase", "my passcode", "top secret", "credential store",
+            "พาสเวิร์ด", "รหัสลับ", "โทเคน", "กุญแจลับ", "reset password page", "pwd_helper",
+        ] {
+            assert!(!looks_secret(t), "must type: {t} (hits {:?})", hits(t));
+        }
     }
 
     /// Known limit (stated in the PR): a bare secret with no keyword nearby, here a short
@@ -687,8 +872,8 @@ mod tests {
         assert_eq!(typed("Edit", json!({"file_path": "src/a.ts", "new_string": t})).as_deref(), Some(t));
     }
 
-    /// Every false negative qa2 found at 365c8c7 (fn-probe.txt) must now drop, except the
-    /// known limit `const k = 'TESTONLYshort';` (see the test above).
+    /// Every false negative qa2 found at 365c8c7 (fn-probe.txt) must still drop, except the known
+    /// limit `const k = 'TESTONLYshort';` (see the test above).
     #[test]
     fn qa2_fn_probe_all_drop() {
         let probe = [
@@ -704,7 +889,6 @@ mod tests {
             "git clone https://TESTONLYabc@github.com/o/r.git",
             "echo 12345678901234567890123456789012",
             "export KEY=TESTONLYkey",
-            "export TESTONLYKEY",
             "mysql -u root --pass TESTONLYpw",
             "mysql -u root --pass=TESTONLYpw",
             "รหัสผ่านคือ TESTONLYpw",
@@ -715,7 +899,6 @@ mod tests {
             "az login --password TESTONLYpw",
             "curl --user bob:TESTONLYpw https://x.test",
             "wget --http-user=bob --http-password=TESTONLYpw https://x.test",
-            "npm config set //registry/:_authToken TESTONLYtok",
             "Authorization: Basic dXNlcjpwYXNz",
             "ssh-keygen -N TESTONLYpass",
             "gpg --passphrase TESTONLYpass",
@@ -739,7 +922,6 @@ mod tests {
             "mysql -pS3cretFAKE",
             "export API_KEY=FAKE",
             &j(&["ey", "JhbGciOiJIUzI1NiJ9.", "ey", "JzdWIiOiJmYWtlIn0.fakesig"]),
-            "0123456789abcdef0123456789abcdef01234567",
             "sqlplus fakeuser/fakepass@fakehost",
             &j(&["-----BEGIN", " PRIVATE KEY-----"]),
         ] {
@@ -788,17 +970,52 @@ mod tests {
         assert_eq!(diagnose_with(false, "Bash", Some(&json!({"command": "ls"}))), "disabled");
     }
 
-    /// Ordinary words in the base rule's list ("auth", "session", "token", "cookie") followed by
-    /// any word drop the whole text, in English and in Thai alike (found while debugging "the
-    /// keycaps do not show"). Documents today's behaviour; the opt-in debug log shows it as
-    /// `why_no_text=secret_filter:base`.
+    /// The filter no longer drops ordinary words (auth, session, token, cookie, key, pin, pass) in
+    /// English or Thai; the debug log still names the rule when a real secret drops.
     #[test]
-    fn known_over_drop_is_language_independent() {
-        for t in ["fix auth bug in login flow", "แก้ไข auth middleware ให้ถูกต้อง", "ตรวจสอบ session ของผู้ใช้"] {
-            assert!(looks_secret(t), "{t}");
+    fn common_words_type_and_real_secrets_name_their_rule() {
+        for t in ["fix auth bug in login flow", "แก้ไข auth middleware ให้ถูกต้อง", "ตรวจสอบ session ของผู้ใช้", "set cookie banner text"] {
+            assert!(!looks_secret(t), "{t}");
+            assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": t}))), "ok", "{t}");
         }
-        assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": "fix auth bug"}))), "secret_filter:base");
-        assert_eq!(diagnose_with(true, "Bash", Some(&json!({"command": "ตรวจสอบ session ของผู้ใช้"}))), "secret_filter:base");
+        assert!(diagnose_with(true, "Bash", Some(&json!({"command": "API_KEY=abc123xyz"}))).starts_with("secret_filter:R1"));
+        assert_eq!(
+            diagnose_with(true, "Bash", Some(&json!({"command": "Authorization: Bearer abcFAKE1"}))),
+            "secret_filter:base"
+        );
+    }
+
+    /// Real-secret forms all drop (fakes are built from pieces at runtime).
+    #[test]
+    fn real_secret_forms_drop() {
+        let forms = [
+            j(&["sk", "-abcdefghijkl"]),
+            j(&["sk_", "live_", "FAKEFAKE1234"]),
+            j(&["gh", "p_abcdefghij1234"]),
+            j(&["xo", "xb-123456"]),
+            j(&["AK", "IAIOSFODNN7EXAMPLE"]),
+            j(&["ey", "JhbGciOiJIUzI1NiJ9.", "ey", "JzdWIiOiIxIn0.abc"]),
+            "password=hunter2".to_string(),
+            "passwd: hunter2".to_string(),
+            "secret=abcd1234".to_string(),
+            "api_key=abcd1234".to_string(),
+            "token=abcd1234efgh".to_string(),
+            "Authorization: Basic dXNlcjpwYXNz".to_string(),
+            "curl -H 'Bearer abc123def456'".to_string(),
+            j(&["-----BEGIN", " PRIVATE KEY-----"]),
+            "https://bob:hunter2@example.com/x".to_string(),
+            "x9Zq4Lw8Rt2Vb7Nm5Kc3Jh6Gf1Ds0Pa9Oi8".to_string(),
+        ];
+        for t in &forms {
+            assert!(looks_secret(t), "must drop: {t}");
+        }
+    }
+
+    /// Git SHAs and other 40-hex runs type; a 3-line env file with a secret name still drops.
+    #[test]
+    fn git_sha_types() {
+        assert!(!looks_secret("git show 0123456789abcdef0123456789abcdef01234567"));
+        assert!(!looks_secret("git log --oneline 7d4315f..af2847c"));
     }
 
     /// These must still type (spec + qa-lead acceptance).

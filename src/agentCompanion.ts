@@ -79,15 +79,19 @@ export interface AgentCompanionOptions {
    * never any text.
    */
   debugLog?: (stage: string, detail: string) => void;
+  /** Debug only: why the 2D or 3D engine is the target (setting, breed, WebGL fallback ...). */
+  renderInfo?: () => string;
 }
 
 /** Pace of real-text typing: one character every 70-120 ms. */
 /** The same text arriving again within this time is the same tool call, not typed twice. */
-const SAME_TEXT_QUIET_MS = 10_000;
+const SAME_TEXT_QUIET_MS = 4_000;
 /** The owner's key pauses real AI text only this long (the quiet pretend keys pause 1.8 s). */
 const TYPED_OWNER_PAUSE_MS = 600;
-const TYPED_MIN_MS = 70;
-const TYPED_JITTER_MS = 50;
+/** A text takes about this long to type (timer ticks add ~10 ms a key on Windows) (short texts keep the relaxed pace). */
+const TYPED_TARGET_MS = 2_600;
+const TYPED_SLOWEST_MS = 95;
+const TYPED_FASTEST_MS = 28;
 
 export class AgentCompanionController {
   private readonly bubbleEl: HTMLDivElement | null;
@@ -96,6 +100,7 @@ export class AgentCompanionController {
   private readonly allowSound: () => boolean;
   private readonly allowTypedText: () => boolean;
   private readonly debugLog: (stage: string, detail: string) => void;
+  private readonly renderInfo: () => string;
 
   private activeStatus: AgentStatusKind = 'idle';
   private privacyPaused = false;
@@ -111,6 +116,8 @@ export class AgentCompanionController {
   private pauseLogged = false;
   private realTypedPauseUntil = 0;
   private queuedAt = 0;
+  /** Mean gap between two keys of the text being typed. */
+  private typedGapMs = TYPED_SLOWEST_MS;
   private legendReturnTimer: number | null = null;
   /** The text the queue holds, so a duplicate event (PreToolUse + PostToolUse) does not restart it. */
   private queuedText = '';
@@ -122,6 +129,7 @@ export class AgentCompanionController {
     this.allowSound = opts.allowSound;
     this.allowTypedText = opts.allowTypedText ?? (() => true);
     this.debugLog = opts.debugLog ?? (() => {});
+    this.renderInfo = opts.renderInfo ?? (() => (this.is3DTarget() ? '3d' : '2d'));
   }
 
   public setPrivacyMode(active: boolean): void {
@@ -193,7 +201,7 @@ export class AgentCompanionController {
     }
     this.debugLog(
       'ui.event',
-      `kind=${ev.kind} status=${ev.status ?? '-'} action=${ev.action ?? '-'} source=${ev.source ?? '-'} tool=${ev.tool ?? '-'} typed_chars=${[...(ev.typedText ?? '')].length} bubble_was=${this.bubbleEl?.classList.contains('hidden') ? 'hidden' : 'shown'}`,
+      `kind=${ev.kind} status=${ev.status ?? '-'} action=${ev.action ?? '-'} source=${ev.source ?? '-'} tool=${ev.tool ?? '-'} typed_chars=${[...(ev.typedText ?? '')].length} lag_ms=${typeof ev.ts === 'number' ? Date.now() - ev.ts : '-'} bubble_was=${this.bubbleEl?.classList.contains('hidden') ? 'hidden' : 'shown'}`,
     );
 
     this.clearTtlTimer();
@@ -258,7 +266,9 @@ export class AgentCompanionController {
         break;
       }
       case 'waiting': {
-        this.stopAutoTyping();
+        // A permission prompt for the very command being typed must not cut it or reset the
+        // legends; the owner's own key press hands the legends back (notifyRealUserInput).
+        if (!this.allowTypedText()) this.stopAutoTyping();
         target?.triggerCuriousDemo(is3d ? 4.2 : 4200);
         this.showBubble(ev.source, ev.text || t('agent.waiting'), 'waiting');
         this.scheduleTtlClear(ev.ttlMs ?? 90_000);
@@ -391,10 +401,14 @@ export class AgentCompanionController {
     }
     this.debugLog(
       'ui.queue',
-      `keys=${keys.length} skipped_no_key=${skipped} render=${this.is3DTarget() ? '3d' : '2d'} replaced_keys=${this.typedQueue.length}`,
+      `keys=${keys.length} skipped_no_key=${skipped} render=${this.renderInfo()} replaced_keys=${this.typedQueue.length}`,
     );
     this.queuedText = text;
     this.queuedAt = performance.now();
+    this.typedGapMs = Math.max(
+      TYPED_FASTEST_MS,
+      Math.min(TYPED_SLOWEST_MS, Math.floor(TYPED_TARGET_MS / Math.max(1, keys.length))),
+    );
     this.typedQueue = keys;
     if (keys.length > 0 && this.autoTyping) {
       // Start the new text right away instead of finishing a quiet burst.
@@ -409,7 +423,13 @@ export class AgentCompanionController {
       window.clearTimeout(this.legendReturnTimer);
       this.legendReturnTimer = null;
     }
-    if (setAiLegendScript(script)) this.debugLog('ui.legend', `script=${script ?? 'owner'}`);
+    const t0 = performance.now();
+    if (setAiLegendScript(script)) {
+      this.debugLog(
+        'ui.legend',
+        `script=${script ?? 'owner'} cost_ms=${Math.round(performance.now() - t0)}`,
+      );
+    }
   }
 
   private startAutoTyping(): void {
@@ -484,7 +504,7 @@ export class AgentCompanionController {
           target.onKeyDown(typed.vk, false, { synthetic: true, bubble: typed.bubble });
           this.debugLog(
             'ui.key',
-            `vk=0x${typed.vk.toString(16)} label_len=${[...(typed.bubble ?? '')].length} bubble=${target.lastKeyBubble === 'spawned'} reason=${target.lastKeyBubble ?? 'unknown'} render=${this.is3DTarget() ? '3d' : '2d'} left=${this.typedQueue.length}`,
+            `vk=0x${typed.vk.toString(16)} label_len=${[...(typed.bubble ?? '')].length} bubble=${target.lastKeyBubble === 'spawned'} reason=${target.lastKeyBubble ?? 'unknown'} render=${this.renderInfo()} since_queue_ms=${Math.round(performance.now() - this.queuedAt)} left=${this.typedQueue.length}`,
           );
           this.heldVirtualVks.add(typed.vk);
           const rid = window.setTimeout(() => {
@@ -505,7 +525,9 @@ export class AgentCompanionController {
         // When the text is done and the AI still works, the quiet pretend-typing takes over.
         this.burstRemaining = 5 + Math.floor(Math.random() * 7);
         if (this.typedQueue.length > 0) {
-          this.scheduleNextVirtualKey(TYPED_MIN_MS + Math.floor(Math.random() * TYPED_JITTER_MS));
+          this.scheduleNextVirtualKey(
+            Math.round(this.typedGapMs * (0.7 + Math.random() * 0.6)),
+          );
         } else if (!this.allowTypedText()) {
           this.scheduleNextVirtualKey(320 + Math.floor(Math.random() * 280));
         } else {

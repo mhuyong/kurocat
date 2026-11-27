@@ -1,9 +1,19 @@
 // Front-end unit tests for the AI companion's typed-text queue. Run with `npm run test:frontend`
 // (bundled by esbuild, executed by `node --test`; no browser needed).
 import './setupDomGlobals';
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { AgentCompanionController, type KeyEventOptions } from '../src/agentCompanion';
+
+/** Every controller a test makes is stopped after it, so no TTL timer of an old one fires later. */
+function trackCtl(c: AgentCompanionController): AgentCompanionController {
+  liveControllers.push(c);
+  return c;
+}
+const liveControllers: AgentCompanionController[] = [];
+afterEach(() => {
+  for (const c of liveControllers.splice(0)) c.handleEvent({ kind: 'status', status: 'idle' });
+});
 
 interface Press {
   vk: number;
@@ -22,13 +32,13 @@ function makeController(allow: { typedText: boolean }) {
     triggerCrossDemo() {},
     triggerSleepDemo() {},
   };
-  const ctl = new AgentCompanionController({
+  const ctl = trackCtl(new AgentCompanionController({
     bubbleEl: null,
     getTarget: () => target,
     is3DTarget: () => false,
     allowSound: () => false,
     allowTypedText: () => allow.typedText,
-  });
+  }));
   return { ctl, presses };
 }
 
@@ -112,14 +122,14 @@ test('Thai typed text: one keycap per Thai character, marks on a dotted circle, 
     triggerCrossDemo() {},
     triggerSleepDemo() {},
   };
-  const ctl = new AgentCompanionController({
+  const ctl = trackCtl(new AgentCompanionController({
     bubbleEl: null,
     getTarget: () => target,
     is3DTarget: () => false,
     allowSound: () => false,
     allowTypedText: () => allow.typedText,
     debugLog: (stage, detail) => logs.push(`${stage} ${detail}`),
-  });
+  }));
   ctl.handleEvent({ kind: 'status', status: 'working', autoType: true, typedText: 'สวัสดี', ttlMs: 30_000 });
   await sleep(1100);
   const bubbles = presses.filter((p) => p.bubble).map((p) => p.bubble);
@@ -144,13 +154,13 @@ function legendRig() {
     triggerCrossDemo() {},
     triggerSleepDemo() {},
   };
-  const ctl = new AgentCompanionController({
+  const ctl = trackCtl(new AgentCompanionController({
     bubbleEl: null,
     getTarget: () => target,
     is3DTarget: () => false,
     allowSound: () => false,
     allowTypedText: () => true,
-  });
+  }));
   return { ctl, modes };
 }
 const typeText = (ctl: AgentCompanionController, text: string) =>
@@ -262,13 +272,13 @@ function pressRig(allowTyped = true) {
     triggerSleepDemo() {},
   };
   const allow = { typedText: allowTyped };
-  const ctl = new AgentCompanionController({
+  const ctl = trackCtl(new AgentCompanionController({
     bubbleEl: null,
     getTarget: () => target,
     is3DTarget: () => false,
     allowSound: () => false,
     allowTypedText: () => allow.typedText,
-  });
+  }));
   return { ctl, presses, allow };
 }
 const textless = (ctl: AgentCompanionController, extra: object = {}) =>
@@ -378,14 +388,14 @@ test('debug log: per key and per cut, never any text', async () => {
     triggerCrossDemo() {},
     triggerSleepDemo() {},
   };
-  const ctl = new AgentCompanionController({
+  const ctl = trackCtl(new AgentCompanionController({
     bubbleEl: null,
     getTarget: () => target,
     is3DTarget: () => true,
     allowSound: () => false,
     allowTypedText: () => true,
     debugLog: (stage, detail) => lines.push(`${stage} ${detail}`),
-  });
+  }));
   typeText(ctl, 'zq9 and a longer tail of text');
   await sleep(250);
   ctl.handleEvent({ kind: 'status', status: 'done' });
@@ -419,13 +429,13 @@ test('Read / Grep / Glob: one label bubble, no key press; other tools: nothing; 
     triggerSleepDemo() {},
   };
   const allow = { typedText: true };
-  const ctl = new AgentCompanionController({
+  const ctl = trackCtl(new AgentCompanionController({
     bubbleEl: null,
     getTarget: () => target,
     is3DTarget: () => false,
     allowSound: () => false,
     allowTypedText: () => allow.typedText,
-  });
+  }));
   for (const tool of ['Read', 'Grep', 'Glob']) textless(ctl, { tool });
   textless(ctl, { tool: 'mcp__x__y' });
   assert.equal(labels.length, 3);
@@ -437,4 +447,41 @@ test('Read / Grep / Glob: one label bubble, no key press; other tools: nothing; 
   textless(ctl, { tool: 'Read' });
   assert.equal(labels.length, 3, 'setting off: no label');
   stop(ctl);
+});
+
+test('a "waiting" (permission) event during Read/Bash keeps the text and the legends; the owner key resets them', async () => {
+  setInputLang('en');
+  const { ctl, presses } = pressRig();
+  typeText(ctl, 'สวัสดี ครับ ผม ชื่อ แมว');
+  await sleep(500);
+  assert.equal(thaiLegendMode(), 'main');
+  ctl.handleEvent({ kind: 'status', status: 'waiting' });
+  assert.ok(ctl.hasQueuedTypedText(), 'permission prompt does not cut the text');
+  assert.equal(thaiLegendMode(), 'main', 'legends stay Thai');
+  await sleep(2500);
+  assert.equal(presses.length, [...'สวัสดี ครับ ผม ชื่อ แมว'].length, 'whole text typed');
+  assert.equal(thaiLegendMode(), 'main');
+  ctl.notifyRealUserInput();
+  assert.equal(thaiLegendMode(), 'off');
+  stop(ctl);
+});
+
+test('an 83-key text is typed clearly faster than before (pace adapts to the length); a short one keeps the relaxed pace', async () => {
+  setInputLang('en');
+  const { ctl, presses } = pressRig();
+  const t0 = performance.now();
+  typeText(ctl, 'a'.repeat(5) + 'bcdefghijklmnopqrstuvwxyz '.repeat(3));
+  const total = 5 + 26 * 3;
+  await sleep(5400); // Node timers on Windows tick at ~16 ms; the old pace needed 8 s for these keys
+  assert.equal(presses.length, total, 'all keys typed within 5.4 s');
+  const lastAt = presses[presses.length - 1].at - t0;
+  assert.ok(lastAt < 5200, `last key at ${Math.round(lastAt)} ms`);
+  stop(ctl);
+  const short = pressRig();
+  const s0 = performance.now();
+  typeText(short.ctl, 'ls -la');
+  await sleep(900);
+  assert.equal(short.presses.length, 6);
+  assert.ok(short.presses[5].at - s0 > 300, 'short text keeps a visible pace');
+  stop(short.ctl);
 });

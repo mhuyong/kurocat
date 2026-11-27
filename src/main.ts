@@ -214,6 +214,8 @@ const agentCompanion = new AgentCompanionController({
   is3DTarget: () => Boolean(active3d && engine3d),
   allowSound: () => settings.soundEnabled !== false,
   allowTypedText: () => settings.showAiTyping === true,
+  renderInfo: () =>
+    `${active3d && engine3d ? '3d' : '2d'}(setting=${settings.renderMode} breed=${settings.catBreed} webgl_unavailable=${webgl3dUnavailable} engine3d=${Boolean(engine3d)})`,
   debugLog: (stage, detail) => {
     void invoke('agent_debug_log', { stage, detail }).catch(() => {});
   },

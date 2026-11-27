@@ -95,7 +95,7 @@ test('privacy guard starts mid-typing: real text dropped and not resumed afterwa
   await sleep(1500);
   const after = presses.filter((p) => p.at > leftAt);
   assert.equal(after.filter((p) => p.bubble).length, 0, 'real text does not resume');
-  assert.ok(after.length > 0, 'quiet pretend-typing continues');
+  assert.equal(after.length, 0, 'setting on: no pretend keys either, pose only');
   stop(ctl);
 });
 
@@ -168,7 +168,9 @@ test('A: system Thai, AI types English -> Latin legends while typing, Thai again
   await sleep(1400);
   assert.ok(modes.length >= 10 && modes.every((m) => m.mode === 'off'), JSON.stringify(modes));
   assert.deepEqual(modes.slice(0, 3).map((m) => m.bubble), ['g', 'i', 't']);
-  assert.equal(thaiLegendMode(), 'main', 'back to the owner language after the text');
+  assert.equal(thaiLegendMode(), 'off', 'legends stay on the AI text script while the status is working');
+  ctl.handleEvent({ kind: 'status', status: 'done' });
+  assert.equal(thaiLegendMode(), 'main', 'back to the owner language when the status ends');
   assert.equal(getInputLang(), 'th', 'tracked input language untouched');
   assert.equal(flips, 0, 'no language switch event (so no language bubble)');
   off();
@@ -184,7 +186,9 @@ test('B: system English, AI types Thai -> Thai legends while typing, English aga
   assert.equal(thaiLegendMode(), 'main');
   await sleep(1300);
   assert.ok(modes.length === 6 && modes.every((m) => m.mode === 'main'), JSON.stringify(modes));
-  assert.equal(thaiLegendMode(), 'off', 'back to English');
+  assert.equal(thaiLegendMode(), 'main', 'Thai legends stay while the status is working');
+  ctl.handleEvent({ kind: 'status', status: 'done' });
+  assert.equal(thaiLegendMode(), 'off', 'back to English when the status ends');
   assert.equal(getInputLang(), 'en');
   stop(ctl);
 });
@@ -239,7 +243,198 @@ test('stopped / replaced without text: legends go back to the owner language', a
   typeText(ctl, 'ls -la');
   await sleep(300);
   assert.equal(thaiLegendMode(), 'off');
-  typeText(ctl, undefined as unknown as string); // a new event with no text replaces the queue
+  stop(ctl);
   assert.equal(thaiLegendMode(), 'main');
+});
+
+// ---- sa decision (5.1.2-th.4): with "Show what the AI types" on, only real AI text is typed ----
+
+/** Records every key press (with its bubble), whether the cat had a real key down. */
+function pressRig(allowTyped = true) {
+  const presses: Array<{ vk: number; bubble?: string; at: number }> = [];
+  const target = {
+    onKeyDown(vk: number, _r?: boolean, opts?: KeyEventOptions) {
+      presses.push({ vk, bubble: opts?.bubble, at: performance.now() });
+    },
+    onKeyUp() {},
+    triggerCuriousDemo() {},
+    triggerCrossDemo() {},
+    triggerSleepDemo() {},
+  };
+  const allow = { typedText: allowTyped };
+  const ctl = new AgentCompanionController({
+    bubbleEl: null,
+    getTarget: () => target,
+    is3DTarget: () => false,
+    allowSound: () => false,
+    allowTypedText: () => allow.typedText,
+  });
+  return { ctl, presses, allow };
+}
+const textless = (ctl: AgentCompanionController, extra: object = {}) =>
+  ctl.handleEvent({ kind: 'status', status: 'working', autoType: true, ...extra });
+
+test('AC1: Bash text, a Read, a Bash text -> keys only while the two texts type; legends stay English on Thai Windows', async () => {
+  setInputLang('th');
+  const { ctl, presses } = pressRig();
+  assert.equal(thaiLegendMode(), 'main');
+  typeText(ctl, 'git log --oneline');
+  await sleep(2400);
+  const first = presses.length;
+  assert.equal(first, 'git log --oneline'.length, 'the whole first text typed');
+  assert.ok(presses.every((p) => p.bubble), 'every key has a bubble');
+  assert.equal(thaiLegendMode(), 'off', 'English legends stay after the text');
+  textless(ctl); // the Read: no text
+  await sleep(1500);
+  assert.equal(presses.length, first, 'no key press during the Read (no pretend typing)');
+  assert.equal(thaiLegendMode(), 'off', 'still English legends between texts');
+  typeText(ctl, 'npm test now');
+  await sleep(1500);
+  assert.equal(presses.length, first + 'npm test now'.length);
+  assert.ok(presses.every((p) => p.bubble), 'no key without a bubble, ever');
+  assert.equal(thaiLegendMode(), 'off');
+  stop(ctl);
+  assert.equal(thaiLegendMode(), 'main');
+});
+
+test('a text-less working event does not cut a text that is being typed', async () => {
+  setInputLang('th');
+  const { ctl, presses } = pressRig();
+  typeText(ctl, 'abcdefghijklmnopqrstuvwxyz0123456789');
+  await sleep(200);
+  textless(ctl);
+  textless(ctl);
+  ctl.handleEvent({ kind: 'status', status: 'thinking' });
+  assert.ok(ctl.hasQueuedTypedText(), 'queue survives');
+  await sleep(4800);
+  assert.equal(presses.length, 36, 'all 36 keys typed');
+  stop(ctl);
+});
+
+test('the same call reported twice (Pre then Post) is typed once', async () => {
+  setInputLang('en');
+  const { ctl, presses } = pressRig();
+  typeText(ctl, 'ls -la');
+  await sleep(1200);
+  typeText(ctl, 'ls -la');
+  await sleep(800);
+  assert.equal(presses.length, 6);
+  stop(ctl);
+});
+
+test('AC2: a filtered secret text (no text arrives) -> pose only, no key presses', async () => {
+  setInputLang('en');
+  const { ctl, presses } = pressRig();
+  textless(ctl, { text: 'running a command' });
+  await sleep(1200);
+  assert.equal(presses.length, 0);
+  stop(ctl);
+});
+
+test('AC3: status done / error / idle -> legends back to the owner language', async () => {
+  for (const status of ['done', 'error', 'idle'] as const) {
+    setInputLang('th');
+    const { ctl } = pressRig();
+    typeText(ctl, 'ls');
+    await sleep(300);
+    assert.equal(thaiLegendMode(), 'off');
+    ctl.handleEvent({ kind: 'status', status });
+    assert.equal(thaiLegendMode(), 'main', status);
+  }
+});
+
+test('AC4: the owner presses a key during the pause -> legends to the owner language at once', async () => {
+  setInputLang('th');
+  const { ctl, presses } = pressRig();
+  typeText(ctl, 'ls');
+  await sleep(600);
+  assert.equal(thaiLegendMode(), 'off', 'stays English during the pause');
+  ctl.notifyRealUserInput();
+  assert.equal(thaiLegendMode(), 'main');
+  await sleep(600);
+  assert.equal(presses.length, 2, 'still no pretend keys');
+  stop(ctl);
+});
+
+test('AC5: setting off -> quiet pretend-typing on the owner layout, no bubbles (as before)', async () => {
+  setInputLang('th');
+  const { ctl, presses } = pressRig(false);
+  textless(ctl);
+  await sleep(1200);
+  assert.ok(presses.length > 3, 'pretend keys');
+  assert.ok(presses.every((p) => !p.bubble));
+  assert.equal(thaiLegendMode(), 'main');
+  stop(ctl);
+});
+
+test('debug log: per key and per cut, never any text', async () => {
+  setInputLang('en');
+  const lines: string[] = [];
+  const target = {
+    lastKeyBubble: undefined as string | undefined,
+    onKeyDown() { this.lastKeyBubble = 'spawned'; },
+    onKeyUp() {},
+    triggerCuriousDemo() {},
+    triggerCrossDemo() {},
+    triggerSleepDemo() {},
+  };
+  const ctl = new AgentCompanionController({
+    bubbleEl: null,
+    getTarget: () => target,
+    is3DTarget: () => true,
+    allowSound: () => false,
+    allowTypedText: () => true,
+    debugLog: (stage, detail) => lines.push(`${stage} ${detail}`),
+  });
+  typeText(ctl, 'zq9 and a longer tail of text');
+  await sleep(250);
+  ctl.handleEvent({ kind: 'status', status: 'done' });
+  const log = lines.join(' | ');
+  assert.match(log, /ui\.key vk=0x5a .*bubble=true reason=spawned render=3d/);
+  assert.match(log, /ui\.cut reason=auto_typing_stopped keys_left=\d/);
+  assert.ok(!/zq9/i.test(log), 'no text in the log');
+});
+
+test('Thai text with spaces and punctuation keeps Thai legends for the whole text', async () => {
+  setInputLang('en');
+  const { ctl, modes } = legendRig();
+  typeText(ctl, 'สวัสดีครับ, วันนี้อากาศดีมาก. ไปกินข้าวกัน (เร็ว ๆ นี้) 123 นะ');
+  await sleep(5500);
+  assert.ok(modes.length > 40, `typed ${modes.length}`);
+  assert.ok(modes.every((m) => m.mode === 'main'), 'every key, spaces and punctuation too, on Thai legends');
+  assert.equal(thaiLegendMode(), 'main', 'still Thai while the status is working');
+  stop(ctl);
+});
+
+test('Read / Grep / Glob: one label bubble, no key press; other tools: nothing; setting off: nothing', async () => {
+  setInputLang('en');
+  const labels: string[] = [];
+  const presses: number[] = [];
+  const target = {
+    onKeyDown(vk: number) { presses.push(vk); },
+    onKeyUp() {},
+    showLabelBubble(l: string) { labels.push(l); },
+    triggerCuriousDemo() {},
+    triggerCrossDemo() {},
+    triggerSleepDemo() {},
+  };
+  const allow = { typedText: true };
+  const ctl = new AgentCompanionController({
+    bubbleEl: null,
+    getTarget: () => target,
+    is3DTarget: () => false,
+    allowSound: () => false,
+    allowTypedText: () => allow.typedText,
+  });
+  for (const tool of ['Read', 'Grep', 'Glob']) textless(ctl, { tool });
+  textless(ctl, { tool: 'mcp__x__y' });
+  assert.equal(labels.length, 3);
+  assert.match(labels[0], /read/i);
+  assert.match(labels[1], /search/i);
+  await sleep(800);
+  assert.equal(presses.length, 0, 'no fake key presses');
+  allow.typedText = false;
+  textless(ctl, { tool: 'Read' });
+  assert.equal(labels.length, 3, 'setting off: no label');
   stop(ctl);
 });

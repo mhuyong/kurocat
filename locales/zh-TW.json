@@ -223,6 +223,8 @@
     "running_cmd": "執行指令中…",
     "researching": "查閱資料中…",
     "reading_code": "閱讀程式碼中…",
+    "typed_reading": "讀取檔案",
+    "typed_searching": "搜尋中",
     "collaborating": "協作處理中…",
     "calling_tool": "呼叫工具中…",
     "thinking": "思考中…",

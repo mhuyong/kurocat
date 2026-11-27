@@ -223,6 +223,8 @@
     "running_cmd": "Running a command…",
     "researching": "Looking things up…",
     "reading_code": "Reading code…",
+    "typed_reading": "reading file",
+    "typed_searching": "searching",
     "collaborating": "Coordinating…",
     "calling_tool": "Using a tool…",
     "thinking": "Thinking…",

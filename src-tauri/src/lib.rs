@@ -2935,10 +2935,12 @@ pub fn run() {
                     ai_typing::debug_log(
                         "app.event",
                         &format!(
-                            "kind={} status={} action={} typed_in={} typed_out={} show_ai_typing={}",
+                            "kind={} status={} action={} source={} tool={} typed_in={} typed_out={} show_ai_typing={}",
                             ev.kind,
                             ev.status.as_deref().unwrap_or("-"),
                             ev.action.as_deref().unwrap_or("-"),
+                            ev.source.as_deref().unwrap_or("-"),
+                            ev.tool.as_deref().unwrap_or("-"),
                             typed_in,
                             ev.typed_text.as_deref().map(|t| t.chars().count()).unwrap_or(0),
                             ai_typing::enabled()

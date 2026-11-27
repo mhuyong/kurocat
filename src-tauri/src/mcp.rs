@@ -555,7 +555,7 @@ pub fn run_hook_cli(args: &[String]) {
         crate::ai_typing::debug_log(
             "hook.in",
             &format!(
-                "event={} tool={} has_input={} mcp_enabled={} show_ai_typing={} why_no_text={}",
+                "event={} tool={} has_input={} mcp_enabled={} show_ai_typing={} why_no_text={} raw_chars={}",
                 raw_payload
                     .get("hook_event_name")
                     .or_else(|| raw_payload.get("hookEventName"))
@@ -566,6 +566,7 @@ pub fn run_hook_cli(args: &[String]) {
                 settings.mcp_enabled,
                 settings.show_ai_typing,
                 crate::ai_typing::diagnose(tool, ti),
+                crate::ai_typing::raw_chars(tool, ti),
             ),
         );
     }

@@ -2132,8 +2132,13 @@ export class KuroCatEngine3D {
     this.wakeRendering();
   }
 
+  /** Debug only: what the last onKeyDown did about its keycap popup. */
+  public lastKeyBubble: string | undefined;
+
   public onKeyDown(vk: number, repeat = false, opts?: KeyEventOptions): void {
+    this.lastKeyBubble = 'no_key_spec';
     if (this.privacyMode) {
+      this.lastKeyBubble = 'privacy';
       if (!repeat && !opts?.synthetic) {
         this.sSquash.kick(0.25);
         this.wakeRendering();
@@ -2166,6 +2171,7 @@ export class KuroCatEngine3D {
       ? opts?.bubble || null
       : keyBubbleLabel(vk, k.spec) || k.spec.label || k.spec.id;
     const bubbleVk = synthetic ? 0 : vk;
+    this.lastKeyBubble = !this.showKeyBubbles ? 'bubbles_off' : bubbleLabel === null ? 'no_label' : 'spawned';
     if (useTail) {
       this.triggerTailKey(k.spec.id, bubbleLabel, bubbleVk);
       return;
@@ -2450,6 +2456,14 @@ export class KuroCatEngine3D {
     }
   }
 
+  /** One label bubble ("reading file") with no key press; used for AI tools that type no text. */
+  public showLabelBubble(label: string): void {
+    if (!this.showKeyBubbles || this.privacyMode || !label) return;
+    const anchor = this.desk.getKeyById('space') ? 'space' : 'enter';
+    this.spawnKeyPopup(anchor, label, 1, 0, '', 24);
+    this.wakeRendering();
+  }
+
   public showInputLangBubble(label: string): void {
     this.cancelHeldGraveBubble();
     if (!this.showKeyBubbles || this.privacyMode || !label) return;
@@ -2472,6 +2486,7 @@ export class KuroCatEngine3D {
     side: -1 | 1,
     vk = 0,
     ownerKeyId: string = keyId,
+    maxLabel = 6,
   ): void {
     if (vk === VK_GRAVE && followsInputLang() && !this.graveBubbleFlushing) {
       // Hold the ` ~ bubble: if this press switched the input language, it is dropped.
@@ -2486,7 +2501,7 @@ export class KuroCatEngine3D {
       }, GRAVE_BUBBLE_HOLD_MS);
       return;
     }
-    const clean = label.length > 6 ? label.slice(0, 6) : label;
+    const clean = label.length > maxLabel ? label.slice(0, maxLabel) : label;
     const { tex, aspect } = getPopupTexture(clean);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sprite = new THREE.Sprite(mat);

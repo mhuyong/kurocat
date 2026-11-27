@@ -48,6 +48,10 @@ const SYNTHETIC: KeyEventOptions = { synthetic: true };
 export interface AgentCompanionTarget {
   onKeyDown(vk: number, repeat?: boolean, opts?: KeyEventOptions): void;
   onKeyUp(vk: number): void;
+  /** Debug only: what the last onKeyDown did about its keycap bubble ("spawned" or a reason). */
+  lastKeyBubble?: string;
+  /** One keycap-style label bubble with no key press ("reading file"); optional. */
+  showLabelBubble?(label: string): void;
   triggerCuriousDemo(duration?: number): void;
   triggerCrossDemo(): void;
   triggerSleepDemo(): void;
@@ -78,6 +82,10 @@ export interface AgentCompanionOptions {
 }
 
 /** Pace of real-text typing: one character every 70-120 ms. */
+/** The same text arriving again within this time is the same tool call, not typed twice. */
+const SAME_TEXT_QUIET_MS = 10_000;
+/** The owner's key pauses real AI text only this long (the quiet pretend keys pause 1.8 s). */
+const TYPED_OWNER_PAUSE_MS = 600;
 const TYPED_MIN_MS = 70;
 const TYPED_JITTER_MS = 50;
 
@@ -100,6 +108,9 @@ export class AgentCompanionController {
   private burstRemaining = 0;
   private lastSoundAt = 0;
   private typedQueue: TypedKey[] = [];
+  private pauseLogged = false;
+  private realTypedPauseUntil = 0;
+  private queuedAt = 0;
   private legendReturnTimer: number | null = null;
   /** The text the queue holds, so a duplicate event (PreToolUse + PostToolUse) does not restart it. */
   private queuedText = '';
@@ -136,7 +147,28 @@ export class AgentCompanionController {
     return this.typedQueue.length > 0;
   }
 
+  /** Read / Grep / Glob type no text: one short label bubble (app language), no key press. */
+  private showToolLabelBubble(tool: string | undefined, target: AgentCompanionTarget | null): void {
+    const name = (tool ?? '').trim().toLowerCase();
+    let key = '';
+    if (name === 'read' || name === 'notebookread' || name === 'view') key = 'agent.typed_reading';
+    else if (name === 'grep' || name === 'glob' || name === 'ls' || name === 'search') key = 'agent.typed_searching';
+    if (!key) return;
+    const label = t(key);
+    const shown = Boolean(target?.showLabelBubble);
+    target?.showLabelBubble?.(label);
+    this.debugLog('ui.label', `tool=${name} label_len=${[...label].length} shown=${shown}`);
+  }
+
+  /** Debug log: a queue that still had keys was cut (reason: replaced / setting / stopped ...). */
+  private logCut(reason: string): void {
+    if (this.typedQueue.length > 0) {
+      this.debugLog('ui.cut', `reason=${reason} keys_left=${this.typedQueue.length}`);
+    }
+  }
+
   private dropTypedText(): void {
+    this.logCut('setting_off');
     this.setLegendScript(null);
     this.typedQueue = [];
     this.queuedText = '';
@@ -147,7 +179,9 @@ export class AgentCompanionController {
     // The owner's own typing always uses the owner's input language: legends go back at once.
     this.setLegendScript(null);
     if (!this.autoTyping) return;
-    this.realUserInputUntil = performance.now() + 1800;
+    const now = performance.now();
+    this.realUserInputUntil = now + 1800;
+    this.realTypedPauseUntil = now + TYPED_OWNER_PAUSE_MS;
     this.releaseAllVirtualKeys();
   }
 
@@ -159,7 +193,7 @@ export class AgentCompanionController {
     }
     this.debugLog(
       'ui.event',
-      `kind=${ev.kind} status=${ev.status ?? '-'} action=${ev.action ?? '-'} typed_chars=${[...(ev.typedText ?? '')].length} bubble_was=${this.bubbleEl?.classList.contains('hidden') ? 'hidden' : 'shown'}`,
+      `kind=${ev.kind} status=${ev.status ?? '-'} action=${ev.action ?? '-'} source=${ev.source ?? '-'} tool=${ev.tool ?? '-'} typed_chars=${[...(ev.typedText ?? '')].length} bubble_was=${this.bubbleEl?.classList.contains('hidden') ? 'hidden' : 'shown'}`,
     );
 
     this.clearTtlTimer();
@@ -197,6 +231,9 @@ export class AgentCompanionController {
     switch (status) {
       case 'working': {
         const typing = this.queueTypedText(ev.typedText);
+        if (!ev.typedText && this.allowTypedText() && !this.privacyPaused) {
+          this.showToolLabelBubble(ev.tool, target);
+        }
         if (ev.autoType !== false || typing) {
           this.startAutoTyping();
         } else {
@@ -207,7 +244,10 @@ export class AgentCompanionController {
         break;
       }
       case 'thinking': {
-        if (ev.autoType) {
+        if (this.allowTypedText()) {
+          // Pose only: a text being typed goes on, no pretend keys are added.
+          if (this.typedQueue.length > 0) this.startAutoTyping();
+        } else if (ev.autoType) {
           this.startAutoTyping();
         } else {
           this.stopAutoTyping();
@@ -323,12 +363,25 @@ export class AgentCompanionController {
         'ui.queue',
         `dropped has_text=${Boolean(text)} privacy=${this.privacyPaused} allow=${this.allowTypedText()}`,
       );
-      // A new event replaces whatever is still queued, also when it has no text to type.
+      if (this.allowTypedText() && !this.privacyPaused) {
+        // "Show what the AI types" is on: an event with no text (another tool call, a filtered
+        // secret, another session's status) never cancels a text that is being typed, and the
+        // legends stay on the last AI text's script until the status ends.
+        this.debugLog('ui.queue', `text_less_keeps keys_left=${this.typedQueue.length}`);
+        return this.typedQueue.length > 0;
+      }
+      this.logCut('replaced_by_event_without_text');
       this.setLegendScript(null);
       this.typedQueue = [];
       return false;
     }
-    if (text === this.queuedText && this.typedQueue.length > 0) return true;
+    // The same call reported twice (Pre- and PostToolUse) is typed once.
+    if (
+      text === this.queuedText &&
+      (this.typedQueue.length > 0 || performance.now() - this.queuedAt < SAME_TEXT_QUIET_MS)
+    ) {
+      return this.typedQueue.length > 0;
+    }
     const keys: TypedKey[] = [];
     let skipped = 0;
     for (const ch of text) {
@@ -336,8 +389,12 @@ export class AgentCompanionController {
       if (key) keys.push(key);
       else skipped += 1;
     }
-    this.debugLog('ui.queue', `keys=${keys.length} skipped_no_key=${skipped}`);
+    this.debugLog(
+      'ui.queue',
+      `keys=${keys.length} skipped_no_key=${skipped} render=${this.is3DTarget() ? '3d' : '2d'} replaced_keys=${this.typedQueue.length}`,
+    );
     this.queuedText = text;
+    this.queuedAt = performance.now();
     this.typedQueue = keys;
     if (keys.length > 0 && this.autoTyping) {
       // Start the new text right away instead of finishing a quiet burst.
@@ -363,7 +420,9 @@ export class AgentCompanionController {
   }
 
   private stopAutoTyping(): void {
+    this.logCut('auto_typing_stopped');
     this.autoTyping = false;
+    this.queuedText = '';
     this.setLegendScript(null);
     this.typedQueue = [];
     if (this.typeTimer !== null) {
@@ -395,11 +454,21 @@ export class AgentCompanionController {
       if (!this.autoTyping) return;
 
       const now = performance.now();
-      if (this.privacyPaused || now < this.realUserInputUntil) {
-        this.scheduleNextVirtualKey(260);
+      const textMode = this.typedQueue.length > 0 && this.allowTypedText();
+      const pausedUntil = textMode ? this.realTypedPauseUntil : this.realUserInputUntil;
+      if (this.privacyPaused || now < pausedUntil) {
+        if (this.typedQueue.length > 0 && !this.pauseLogged) {
+          this.pauseLogged = true;
+          this.debugLog(
+            'ui.pause',
+            `reason=${this.privacyPaused ? 'privacy' : 'owner_input'} keys_left=${this.typedQueue.length}`,
+          );
+        }
+        this.scheduleNextVirtualKey(textMode ? 100 : 260);
         return;
       }
 
+      this.pauseLogged = false;
       const target = this.getTarget();
       // Checked on every key, so a key already scheduled never types real text after the
       // setting went off.
@@ -411,7 +480,12 @@ export class AgentCompanionController {
         if (!this.privacyPaused) this.setLegendScript(typed.script ?? getAiLegendScript() ?? 'latin');
         if (target) {
           if (this.heldVirtualVks.delete(typed.vk)) target.onKeyUp(typed.vk);
+          target.lastKeyBubble = undefined;
           target.onKeyDown(typed.vk, false, { synthetic: true, bubble: typed.bubble });
+          this.debugLog(
+            'ui.key',
+            `vk=0x${typed.vk.toString(16)} label_len=${[...(typed.bubble ?? '')].length} bubble=${target.lastKeyBubble === 'spawned'} reason=${target.lastKeyBubble ?? 'unknown'} render=${this.is3DTarget() ? '3d' : '2d'} left=${this.typedQueue.length}`,
+          );
           this.heldVirtualVks.add(typed.vk);
           const rid = window.setTimeout(() => {
             this.releaseTimers.delete(rid);
@@ -422,7 +496,7 @@ export class AgentCompanionController {
           this.releaseTimers.add(rid);
         }
         // After the last key the legends go back to the owner's language soon, not at the next tick.
-        if (this.typedQueue.length === 0) {
+        if (this.typedQueue.length === 0 && !this.allowTypedText()) {
           this.legendReturnTimer = window.setTimeout(() => {
             this.legendReturnTimer = null;
             if (this.typedQueue.length === 0) this.setLegendScript(null);
@@ -430,11 +504,18 @@ export class AgentCompanionController {
         }
         // When the text is done and the AI still works, the quiet pretend-typing takes over.
         this.burstRemaining = 5 + Math.floor(Math.random() * 7);
-        this.scheduleNextVirtualKey(
-          this.typedQueue.length > 0
-            ? TYPED_MIN_MS + Math.floor(Math.random() * TYPED_JITTER_MS)
-            : 320 + Math.floor(Math.random() * 280),
-        );
+        if (this.typedQueue.length > 0) {
+          this.scheduleNextVirtualKey(TYPED_MIN_MS + Math.floor(Math.random() * TYPED_JITTER_MS));
+        } else if (!this.allowTypedText()) {
+          this.scheduleNextVirtualKey(320 + Math.floor(Math.random() * 280));
+        } else {
+          this.debugLog('ui.typed_done', 'pose_only');
+        }
+        return;
+      }
+      if (this.allowTypedText()) {
+        // "Show what the AI types" is on: only real AI text is typed. Nothing to type means a
+        // working pose with the paws at rest; the next text restarts this loop.
         return;
       }
       // The text is done (or none): the legends follow the owner's input language again.

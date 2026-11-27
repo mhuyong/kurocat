@@ -223,6 +223,8 @@
     "running_cmd": "명령 실행 중…",
     "researching": "자료 찾는 중…",
     "reading_code": "코드 읽는 중…",
+    "typed_reading": "파일 읽기",
+    "typed_searching": "검색 중",
     "collaborating": "협업 처리 중…",
     "calling_tool": "도구 실행 중…",
     "thinking": "생각 중…",
